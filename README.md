@@ -10,7 +10,7 @@ A modern, scalable, multi-tenant CRM platform built with **Next.js (App Router)*
 - **Global User Identity**: Users register once with a unified global identity linked to Supabase Auth (`auth.users` & `profiles`). A single user account can belong to multiple companies with completely different roles.
 - **Tenant Scoping**: Every organization-specific table (`contacts`, `leads`, `deals`, `pipelines`, `pipeline_stages`, `tasks`, `activities`, `notifications`, `organization_invitations`, `organization_join_requests`) contains `organization_id` foreign keys and composite indexes.
 - **Database Row Level Security (RLS)**: Enforced via PostgreSQL policies and non-recursive `SECURITY DEFINER` functions (`is_org_member`, `has_org_role`, `get_user_org_role`). Pending, suspended, rejected, or revoked members are strictly barred from querying or modifying company CRM records.
-- **Last Active Owner Protection**: A PostgreSQL database trigger (`trg_prevent_last_owner_removal`) prevents removing or demoting the last active `Owner` in any organization.
+- **Last Active Owner Protection**: A PostgreSQL database trigger (`trg_prevent_last_owner_removal`) prevents removing or demoting the last active `Owner` in any organization. 
 
 ### 2. Role-Based Access Control (RBAC)
 Permissions are centralized in `lib/permissions.ts` and validated both server-side and by database RLS:
