@@ -4,7 +4,7 @@ import React from 'react';
 import { useWorkspace } from '../providers/workspace-provider';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
-import { TutorialModal } from '../ui/tutorial-modal';
+import { ToastContainer } from '../ui/toast-container';
 import { ShieldAlert, Clock, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
@@ -70,7 +70,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
-      <TutorialModal />
+      <ToastContainer />
     </div>
   );
 }

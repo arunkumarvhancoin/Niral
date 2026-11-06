@@ -16,16 +16,13 @@ import {
   UserCheck,
   Building,
   LogOut,
-  BookOpen,
 } from 'lucide-react';
 import { useWorkspace } from '../providers/workspace-provider';
-import { useTutorialStore } from '../../lib/stores/tutorial-store';
 import { hasPermission } from '../../lib/permissions';
 
 export function Sidebar() {
   const pathname = usePathname();
   const { currentRole, currentStatus, currentUser, signOut } = useWorkspace();
-  const { openTutorial } = useTutorialStore();
 
   const canViewTeam = currentRole === 'Owner' || currentRole === 'Admin' || currentRole === 'Manager';
 
@@ -71,18 +68,6 @@ export function Sidebar() {
             </Link>
           );
         })}
-
-        {/* Quick Tour Button */}
-        <div className="pt-2 mt-2 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={() => openTutorial(0)}
-            className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-xs font-semibold text-primary-700 bg-primary-50/70 hover:bg-primary-100/80 transition-colors cursor-pointer text-left"
-          >
-            <BookOpen className="w-4 h-4 text-primary-600 flex-shrink-0" />
-            <span>CRM Quick Tour</span>
-          </button>
-        </div>
       </div>
 
       {/* Footer / User Account docked at the absolute bottom */}
