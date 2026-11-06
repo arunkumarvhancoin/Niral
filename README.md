@@ -5,7 +5,7 @@ A modern, scalable, multi-tenant CRM platform built with **Next.js (App Router)*
 --- 
    
 ## Architecture & Tenant Isolation  
-
+ 
 ### 1. Hybrid Organization Model 
 - **Global User Identity**: Users register once with a unified global identity linked to Supabase Auth (`auth.users` & `profiles`). A single user account can belong to multiple companies with completely different roles.
 - **Tenant Scoping**: Every organization-specific table (`contacts`, `leads`, `deals`, `pipelines`, `pipeline_stages`, `tasks`, `activities`, `notifications`, `organization_invitations`, `organization_join_requests`) contains `organization_id` foreign keys and composite indexes.
