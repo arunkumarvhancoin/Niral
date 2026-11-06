@@ -1,0 +1,729 @@
+'use client';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { AppShell } from '../../components/layout/app-shell';
+import { useWorkspace } from '../../components/providers/workspace-provider';
+import { CRMService } from '../../lib/services/crm-service';
+import { Task, Activity, OrganizationMember } from '../../lib/types/crm';
+import { hasPermission } from '../../lib/permissions';
+import {
+  CheckSquare,
+  Plus,
+  Filter,
+  Calendar,
+  Clock,
+  User,
+  CheckCircle2,
+  Circle,
+  Trash2,
+  Edit,
+  X,
+  Phone,
+  Mail,
+  FileText,
+  Activity as ActivityIcon,
+  MessageSquare,
+  Sparkles,
+  AlertCircle,
+} from 'lucide-react';
+
+export default function TasksAndFeedPage() {
+  const { currentOrg, currentRole, currentStatus, currentUser } = useWorkspace();
+
+  // Tasks state
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [teamMembers, setTeamMembers] = useState<OrganizationMember[]>([]);
+  const [taskFilter, setTaskFilter] = useState<'pending' | 'completed' | 'all'>('pending');
+  const [isTasksLoading, setIsTasksLoading] = useState(true);
+
+  // Activities state
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [activityFilter, setActivityFilter] = useState<string>('all');
+  const [isActivitiesLoading, setIsActivitiesLoading] = useState(true);
+
+  // Task Modal state
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [taskFormData, setTaskFormData] = useState(() => ({
+    title: '',
+    description: '',
+    due_date: new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
+    priority: 'medium' as Task['priority'],
+    status: 'todo' as Task['status'],
+    assigned_to: '',
+  }));
+
+  // Activity Modal state
+  const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
+  const [activityFormData, setActivityFormData] = useState({
+    type: 'note' as Activity['type'],
+    title: '',
+    description: '',
+  });
+
+  const canCreateTask = hasPermission(currentRole, currentStatus, 'crm:tasks:create');
+  const canUpdateTask = hasPermission(currentRole, currentStatus, 'crm:tasks:update');
+  const canDeleteTask = hasPermission(currentRole, currentStatus, 'crm:tasks:delete');
+  const canCreateActivity = hasPermission(currentRole, currentStatus, 'crm:activities:create');
+
+  const loadMembers = useCallback(async () => {
+    if (!currentOrg?.id) return;
+    try {
+      const members = await CRMService.getOrganizationMembers(currentOrg.id);
+      setTeamMembers(members);
+    } catch (err) {
+      console.error(err);
+    }
+  }, [currentOrg?.id]);
+
+  const loadTasks = useCallback(async () => {
+    if (!currentOrg?.id) return;
+    if (tasks.length === 0) {
+      setIsTasksLoading(true);
+    }
+    try {
+      const data = await CRMService.getTasks(currentOrg.id, taskFilter);
+      setTasks(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsTasksLoading(false);
+    }
+  }, [currentOrg?.id, taskFilter, tasks.length]);
+
+  const loadActivities = useCallback(async () => {
+    if (!currentOrg?.id) return;
+    if (activities.length === 0) {
+      setIsActivitiesLoading(true);
+    }
+    try {
+      const data = await CRMService.getActivities(currentOrg.id);
+      setActivities(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsActivitiesLoading(false);
+    }
+  }, [currentOrg?.id, activities.length]);
+
+  useEffect(() => {
+    if (currentOrg?.id) {
+      loadTasks();
+      loadActivities();
+      loadMembers();
+    }
+  }, [currentOrg?.id, loadTasks, loadActivities, loadMembers]);
+
+  const handleToggleTaskStatus = async (task: Task) => {
+    if (!currentOrg || !canUpdateTask) return;
+    const newStatus = task.status === 'completed' ? 'todo' : 'completed';
+
+    // Optimistic update
+    setTasks((prev) =>
+      prev.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t))
+    );
+
+    try {
+      await CRMService.updateTask(task.id, currentOrg.id, { status: newStatus });
+      await loadTasks();
+      // Reload activities to reflect newly completed items in feed
+      await loadActivities();
+    } catch (err: any) {
+      alert(err.message || 'Update failed');
+      await loadTasks();
+    }
+  };
+
+  const handleTaskSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentOrg || !currentUser) return;
+    try {
+      if (editingTask) {
+        await CRMService.updateTask(editingTask.id, currentOrg.id, taskFormData);
+      } else {
+        await CRMService.createTask(
+          currentOrg.id,
+          {
+            ...taskFormData,
+            assigned_to: taskFormData.assigned_to || currentUser.id,
+          },
+          currentUser.id
+        );
+      }
+      setIsTaskModalOpen(false);
+      await loadTasks();
+    } catch (err: any) {
+      alert(err.message || 'Operation failed');
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!currentOrg || !canDeleteTask) return;
+    if (!confirm('Delete this task?')) return;
+    try {
+      await CRMService.deleteTask(taskId, currentOrg.id);
+      await loadTasks();
+    } catch (err: any) {
+      alert(err.message || 'Delete failed');
+    }
+  };
+
+  const handleActivitySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentOrg || !currentUser) return;
+    try {
+      await CRMService.createActivity(currentOrg.id, activityFormData, currentUser.id);
+      setIsActivityModalOpen(false);
+      setActivityFormData({ type: 'note', title: '', description: '' });
+      await loadActivities();
+    } catch (err: any) {
+      alert(err.message || 'Failed to record activity');
+    }
+  };
+
+  const getActivityIcon = (type: Activity['type']) => {
+    switch (type) {
+      case 'call':
+        return <Phone className="w-4 h-4 text-emerald-600" />;
+      case 'meeting':
+        return <Calendar className="w-4 h-4 text-purple-600" />;
+      case 'email':
+        return <Mail className="w-4 h-4 text-blue-600" />;
+      default:
+        return <FileText className="w-4 h-4 text-slate-600" />;
+    }
+  };
+
+  const filteredActivities = activities.filter((act) => {
+    if (activityFilter === 'all') return true;
+    return act.type === activityFilter;
+  });
+
+  return (
+    <AppShell>
+      <div className="space-y-8 max-w-5xl">
+        {/* Top Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Tasks & Feed</h1>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Action items, follow-ups, and organization activity for {currentOrg?.name}.
+            </p>
+          </div>
+          <div className="flex items-center space-x-2.5">
+            {canCreateActivity && (
+              <button
+                onClick={() => {
+                  setActivityFormData({ type: 'note', title: '', description: '' });
+                  setIsActivityModalOpen(true);
+                }}
+                className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition-colors"
+              >
+                <MessageSquare className="w-4 h-4 text-slate-500" />
+                <span>Log Note / Call</span>
+              </button>
+            )}
+            {canCreateTask && (
+              <button
+                onClick={() => {
+                  setEditingTask(null);
+                  setTaskFormData({
+                    title: '',
+                    description: '',
+                    due_date: new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
+                    priority: 'medium',
+                    status: 'todo',
+                    assigned_to: currentUser?.id || '',
+                  });
+                  setIsTaskModalOpen(true);
+                }}
+                className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold shadow-sm transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span>New Task</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION 1: OPEN TASKS / TO-DOS */}
+        <div className="space-y-4">
+          {/* Quick Task Stats */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center ring-1 ring-blue-500/10 flex-shrink-0">
+                <CheckSquare className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Pending Tasks</p>
+                <p className="text-base font-bold text-slate-900">{tasks.filter((t) => t.status !== 'completed').length}</p>
+              </div>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center ring-1 ring-emerald-500/10 flex-shrink-0">
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Completed</p>
+                <p className="text-base font-bold text-emerald-600">{tasks.filter((t) => t.status === 'completed').length}</p>
+              </div>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center ring-1 ring-rose-500/10 flex-shrink-0">
+                <AlertCircle className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Urgent / High</p>
+                <p className="text-base font-bold text-rose-600">
+                  {tasks.filter((t) => t.priority === 'urgent' || t.priority === 'high').length}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center ring-1 ring-purple-500/10 flex-shrink-0">
+                <ActivityIcon className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Logged Feed</p>
+                <p className="text-base font-bold text-purple-600">{activities.length}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="flex items-center space-x-2">
+              <CheckSquare className="w-4 h-4 text-slate-700" />
+              <h2 className="text-base font-semibold text-slate-900">Action Items</h2>
+              <span className="text-xs text-slate-400 font-medium">({tasks.length})</span>
+            </div>
+
+            {/* Task Filters */}
+            <div className="flex items-center space-x-1 bg-slate-100 p-0.5 rounded-lg">
+              {(['pending', 'completed', 'all'] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setTaskFilter(f)}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-all ${
+                    taskFilter === f
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="divide-y divide-slate-100">
+              {isTasksLoading ? (
+                <div className="py-10 text-center text-xs text-slate-400">Loading tasks...</div>
+              ) : tasks.length === 0 ? (
+                <div className="py-10 text-center">
+                  <CheckSquare className="w-7 h-7 text-slate-300 mx-auto mb-1.5" />
+                  <p className="text-sm font-medium text-slate-600">
+                    {taskFilter === 'pending' ? 'All caught up!' : 'No tasks in this view'}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {taskFilter === 'pending'
+                      ? 'No pending action items for this workspace.'
+                      : 'Create a new task to keep track of follow-ups.'}
+                  </p>
+                </div>
+              ) : (
+                tasks.map((task) => {
+                  const isCompleted = task.status === 'completed';
+                  return (
+                    <div
+                      key={task.id}
+                      className={`p-3.5 flex items-start justify-between hover:bg-slate-50/70 transition-colors ${
+                        isCompleted ? 'bg-slate-50/40 opacity-75' : ''
+                      }`}
+                    >
+                      <div className="flex items-start space-x-3 flex-1 min-w-0">
+                        <button
+                          onClick={() => handleToggleTaskStatus(task)}
+                          className="mt-0.5 text-slate-400 hover:text-primary-600 transition-colors flex-shrink-0"
+                          title={isCompleted ? 'Mark incomplete' : 'Mark complete'}
+                        >
+                          {isCompleted ? (
+                            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                          ) : (
+                            <Circle className="w-5 h-5 text-slate-300 hover:text-primary-500" />
+                          )}
+                        </button>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center space-x-2">
+                            <h4
+                              className={`text-xs font-semibold ${
+                                isCompleted ? 'text-slate-400 line-through' : 'text-slate-900'
+                              }`}
+                            >
+                              {task.title}
+                            </h4>
+                            <span
+                              className={`text-[10px] font-medium px-2 py-0.2 rounded capitalize ${
+                                task.priority === 'urgent'
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  : task.priority === 'high'
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {task.priority}
+                            </span>
+                          </div>
+
+                          {task.description && (
+                            <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                              {task.description}
+                            </p>
+                          )}
+
+                          <div className="flex flex-wrap items-center gap-3 mt-1.5 text-[11px] text-slate-400">
+                            {task.due_date && (
+                              <span className="flex items-center">
+                                <Calendar className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                                Due: {new Date(task.due_date).toLocaleDateString()}
+                              </span>
+                            )}
+                            {task.assignee && (
+                              <span className="flex items-center text-slate-500">
+                                <User className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                                {task.assignee.full_name || task.assignee.email}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-1 ml-3 flex-shrink-0">
+                        {canUpdateTask && (
+                          <button
+                            onClick={() => {
+                              setEditingTask(task);
+                              setTaskFormData({
+                                title: task.title,
+                                description: task.description || '',
+                                due_date: task.due_date || '',
+                                priority: task.priority,
+                                status: task.status,
+                                assigned_to: task.assigned_to || '',
+                              });
+                              setIsTaskModalOpen(true);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100 transition-colors"
+                            title="Edit Task"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {canDeleteTask && (
+                          <button
+                            onClick={() => handleDeleteTask(task.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition-colors"
+                            title="Delete Task"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION 2: ACTIVITY FEED & LOG */}
+        <div id="feed" className="space-y-3 pt-4 border-t border-slate-200">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="flex items-center space-x-2">
+              <ActivityIcon className="w-4 h-4 text-slate-700" />
+              <h2 className="text-base font-semibold text-slate-900">Activity Feed & History</h2>
+              <span className="text-xs text-slate-400 font-medium">({filteredActivities.length})</span>
+            </div>
+
+            {/* Activity Type Filters */}
+            <div className="flex items-center space-x-1">
+              {[
+                { label: 'All', value: 'all' },
+                { label: 'Notes', value: 'note' },
+                { label: 'Calls', value: 'call' },
+                { label: 'Meetings', value: 'meeting' },
+                { label: 'Emails', value: 'email' },
+              ].map((pill) => (
+                <button
+                  key={pill.value}
+                  onClick={() => setActivityFilter(pill.value)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    activityFilter === pill.value
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  {pill.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="divide-y divide-slate-100">
+              {isActivitiesLoading ? (
+                <div className="py-10 text-center text-xs text-slate-400">Loading activity feed...</div>
+              ) : filteredActivities.length === 0 ? (
+                <div className="py-10 text-center">
+                  <ActivityIcon className="w-7 h-7 text-slate-300 mx-auto mb-1.5" />
+                  <p className="text-sm font-medium text-slate-600">No activities recorded</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Calls, notes, meetings, and client touchpoints will appear here.
+                  </p>
+                </div>
+              ) : (
+                filteredActivities.map((act) => {
+                  const isCall = act.type === 'call';
+                  const isMeeting = act.type === 'meeting';
+                  const isEmail = act.type === 'email';
+
+                  return (
+                    <div key={act.id} className="p-4 flex items-start space-x-3.5 hover:bg-slate-50/70 transition-colors">
+                      <div
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs ${
+                          isCall
+                            ? 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-500/20'
+                            : isMeeting
+                            ? 'bg-purple-50 text-purple-600 ring-1 ring-purple-500/20'
+                            : isEmail
+                            ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-500/20'
+                            : 'bg-amber-50 text-amber-600 ring-1 ring-amber-500/20'
+                        }`}
+                      >
+                        {getActivityIcon(act.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <p className="text-xs font-bold text-slate-900">{act.title}</p>
+                            <span
+                              className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded ${
+                                isCall
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : isMeeting
+                                  ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                  : isEmail
+                                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+                              }`}
+                            >
+                              {act.type}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-400 font-medium">
+                            {new Date(act.created_at).toLocaleDateString()} at{' '}
+                            {new Date(act.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        {act.description && (
+                          <p className="text-xs text-slate-600 mt-1.5 whitespace-pre-line leading-relaxed">
+                            {act.description}
+                          </p>
+                        )}
+                        <div className="flex items-center space-x-2 mt-2 text-[11px] text-slate-400">
+                          {act.performer && (
+                            <span className="font-medium text-slate-600">
+                              Logged by {act.performer.full_name || act.performer.email}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* TASK MODAL */}
+        {isTaskModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="font-bold text-slate-900 text-sm">
+                  {editingTask ? 'Edit Task' : 'New Task'}
+                </h3>
+                <button
+                  onClick={() => setIsTaskModalOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleTaskSubmit} className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Title *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Follow up on contract review"
+                    value={taskFormData.title}
+                    onChange={(e) => setTaskFormData({ ...taskFormData, title: e.target.value })}
+                    className="w-full text-xs rounded-lg border border-slate-300 p-2 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Description</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Notes or details..."
+                    value={taskFormData.description}
+                    onChange={(e) => setTaskFormData({ ...taskFormData, description: e.target.value })}
+                    className="w-full text-xs rounded-lg border border-slate-300 p-2 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Due Date</label>
+                    <input
+                      type="date"
+                      value={taskFormData.due_date}
+                      onChange={(e) => setTaskFormData({ ...taskFormData, due_date: e.target.value })}
+                      className="w-full text-xs rounded-lg border border-slate-300 p-2 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Priority</label>
+                    <select
+                      value={taskFormData.priority}
+                      onChange={(e) => setTaskFormData({ ...taskFormData, priority: e.target.value as any })}
+                      className="w-full text-xs rounded-lg border border-slate-300 p-2 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="urgent">Urgent</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Assignee</label>
+                  <select
+                    value={taskFormData.assigned_to}
+                    onChange={(e) => setTaskFormData({ ...taskFormData, assigned_to: e.target.value })}
+                    className="w-full text-xs rounded-lg border border-slate-300 p-2 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                  >
+                    <option value="">Assign to me</option>
+                    {teamMembers.map((member) => (
+                      <option key={member.id} value={member.user_id}>
+                        {member.user?.full_name || member.user?.email || member.user_id} ({member.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsTaskModalOpen(false)}
+                    className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-sm transition-colors"
+                  >
+                    {editingTask ? 'Save Changes' : 'Create Task'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* LOG ACTIVITY MODAL */}
+        {isActivityModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="font-bold text-slate-900 text-sm">Log Activity / Touchpoint</h3>
+                <button
+                  onClick={() => setIsActivityModalOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleActivitySubmit} className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Activity Type</label>
+                  <select
+                    value={activityFormData.type}
+                    onChange={(e) => setActivityFormData({ ...activityFormData, type: e.target.value as any })}
+                    className="w-full text-xs rounded-lg border border-slate-300 p-2 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                  >
+                    <option value="note">Internal Note</option>
+                    <option value="call">Phone Call</option>
+                    <option value="meeting">Meeting / Demo</option>
+                    <option value="email">Email</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Title *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Call with CTO re: Security Review"
+                    value={activityFormData.title}
+                    onChange={(e) => setActivityFormData({ ...activityFormData, title: e.target.value })}
+                    className="w-full text-xs rounded-lg border border-slate-300 p-2 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Summary / Discussion Notes</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Key discussion points, next steps, feedback..."
+                    value={activityFormData.description}
+                    onChange={(e) => setActivityFormData({ ...activityFormData, description: e.target.value })}
+                    className="w-full text-xs rounded-lg border border-slate-300 p-2 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsActivityModalOpen(false)}
+                    className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-sm transition-colors"
+                  >
+                    Log to Feed
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    </AppShell>
+  );
+}
