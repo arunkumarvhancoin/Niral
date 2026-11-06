@@ -22,14 +22,11 @@ import {
   FileText,
   Sparkles,
   ArrowRight,
-  BookOpen,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useTutorialStore } from '../../lib/stores/tutorial-store';
 
 export default function DashboardPage() {
   const { currentOrg, currentRole, isLoading: workspaceLoading } = useWorkspace();
-  const { openTutorial } = useTutorialStore();
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -76,14 +73,6 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="flex items-center space-x-3">
-            <button
-              type="button"
-              onClick={() => openTutorial(0)}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg border border-primary-200 bg-primary-50/70 hover:bg-primary-100/80 text-primary-700 text-xs font-semibold shadow-2xs transition-colors"
-            >
-              <BookOpen className="w-4 h-4 text-primary-600" />
-              <span>CRM Tour & Guide</span>
-            </button>
             <Link
               href="/contacts?new=true"
               className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition-colors"

@@ -6,6 +6,8 @@ import { useWorkspace } from '../../components/providers/workspace-provider';
 import { CRMService } from '../../lib/services/crm-service';
 import { Lead } from '../../lib/types/crm';
 import { hasPermission } from '../../lib/permissions';
+import { toast } from '../../lib/stores/toast-store';
+import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import {
   Target,
   Plus,
@@ -107,43 +109,79 @@ export default function LeadsPage() {
     setIsModalOpen(true);
   };
 
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    variant?: 'danger' | 'primary';
+    action?: () => Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentOrg || !currentUser) return;
     try {
       if (editingLead) {
         await CRMService.updateLead(editingLead.id, currentOrg.id, formData);
+        toast.success(`Lead "${formData.title}" updated successfully!`);
       } else {
         await CRMService.createLead(currentOrg.id, formData, currentUser.id);
+        toast.success(`Lead "${formData.title || formData.first_name}" created successfully!`);
       }
       setIsModalOpen(false);
       await loadLeads();
     } catch (err: any) {
-      alert(err.message || 'Error occurred');
+      toast.error(err.message || 'Error occurred while saving lead');
     }
   };
 
-  const handleConvert = async (leadId: string) => {
+  const handleConvert = (leadId: string) => {
     if (!currentOrg || !currentUser) return;
-    if (!confirm('Convert this lead into an active customer contact and pipeline deal?')) return;
-    try {
-      await CRMService.convertLead(leadId, currentOrg.id, currentUser.id);
-      alert('Lead successfully converted!');
-      await loadLeads();
-    } catch (err: any) {
-      alert(err.message || 'Conversion failed');
-    }
+    setConfirmState({
+      isOpen: true,
+      title: 'Convert Lead',
+      message: 'Are you sure you want to convert this lead into an active customer contact and pipeline deal?',
+      confirmText: 'Convert Lead',
+      variant: 'primary',
+      action: async () => {
+        try {
+          await CRMService.convertLead(leadId, currentOrg.id, currentUser.id);
+          toast.success('Lead converted to contact and deal!');
+          await loadLeads();
+        } catch (err: any) {
+          toast.error(err.message || 'Conversion failed');
+        } finally {
+          setConfirmState((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
   };
 
-  const handleDelete = async (leadId: string) => {
+  const handleDelete = (leadId: string) => {
     if (!currentOrg) return;
-    if (!confirm('Delete this lead?')) return;
-    try {
-      await CRMService.deleteLead(leadId, currentOrg.id);
-      await loadLeads();
-    } catch (err: any) {
-      alert(err.message || 'Delete failed');
-    }
+    setConfirmState({
+      isOpen: true,
+      title: 'Delete Lead',
+      message: 'Are you sure you want to permanently delete this lead? This cannot be undone.',
+      confirmText: 'Delete Lead',
+      variant: 'danger',
+      action: async () => {
+        try {
+          await CRMService.deleteLead(leadId, currentOrg.id);
+          toast.success('Lead deleted successfully');
+          await loadLeads();
+        } catch (err: any) {
+          toast.error(err.message || 'Failed to delete lead');
+        } finally {
+          setConfirmState((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
   };
 
   const newLeadsCount = leads.filter((l) => l.status === 'New').length;
@@ -502,6 +540,16 @@ export default function LeadsPage() {
             </div>
           </div>
         )}
+        {/* In-UI Confirmation Dialog */}
+        <ConfirmDialog
+          isOpen={confirmState.isOpen}
+          title={confirmState.title}
+          message={confirmState.message}
+          confirmText={confirmState.confirmText}
+          variant={confirmState.variant}
+          onConfirm={() => confirmState.action?.()}
+          onCancel={() => setConfirmState((prev) => ({ ...prev, isOpen: false }))}
+        />
       </div>
     </AppShell>
   );

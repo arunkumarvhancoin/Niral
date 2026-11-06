@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { LogoUpload } from '../../components/ui/logo-upload';
+import { toast } from '../../lib/stores/toast-store';
 
 function OnboardingContent() {
   const { currentUser, memberships, refreshWorkspace, switchOrganization } = useWorkspace();
@@ -41,7 +42,7 @@ function OnboardingContent() {
       await switchOrganization(orgId);
       router.push('/dashboard');
     } catch (err: any) {
-      alert(err.message || 'Failed to switch organization');
+      toast.error(err.message || 'Failed to switch organization');
     }
   };
 
@@ -56,11 +57,12 @@ function OnboardingContent() {
         slug,
       });
 
+      toast.success(`Organization "${createData.name}" created!`);
       await refreshWorkspace();
       await switchOrganization(organization.id);
       router.push('/dashboard');
     } catch (err: any) {
-      alert(err.message || 'Failed to create organization');
+      toast.error(err.message || 'Failed to create organization');
     } finally {
       setIsSubmitting(false);
     }

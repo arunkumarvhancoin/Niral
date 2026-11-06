@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { LogoUpload } from '../../components/ui/logo-upload';
+import { toast } from '../../lib/stores/toast-store';
 
 export default function SettingsPage() {
   const { currentOrg, currentRole, currentStatus, currentUser, refreshWorkspace } = useWorkspace();
@@ -60,9 +61,10 @@ export default function SettingsPage() {
       await CRMService.updateOrganization(currentOrg.id, formData);
       await refreshWorkspace();
       setIsSaved(true);
+      toast.success('Organization settings updated successfully!');
       setTimeout(() => setIsSaved(false), 3000);
     } catch (err: any) {
-      alert(err.message || 'Failed to update organization');
+      toast.error(err.message || 'Failed to update organization');
     } finally {
       setIsSubmitting(false);
     }
@@ -74,7 +76,7 @@ export default function SettingsPage() {
       `CAUTION: Deleting this organization will permanently erase all contacts, deals, tasks, and audit logs. Type "${currentOrg.name}" to confirm:`
     );
     if (confirmName !== currentOrg.name) {
-      alert('Organization name did not match. Deletion cancelled.');
+      toast.error('Organization name did not match. Deletion cancelled.');
       return;
     }
 
@@ -83,10 +85,11 @@ export default function SettingsPage() {
       if (currentUser) {
         await CRMService.leaveOrganization(currentOrg.id, currentUser.id);
       }
+      toast.success('Organization deleted');
       await refreshWorkspace();
       router.push('/onboarding');
     } catch (err: any) {
-      alert(err.message || 'Failed to delete organization');
+      toast.error(err.message || 'Failed to delete organization');
     }
   };
 

@@ -12,6 +12,8 @@ import {
   MemberStatus,
 } from '../../lib/types/crm';
 import { hasPermission, isOrgAdmin } from '../../lib/permissions';
+import { toast } from '../../lib/stores/toast-store';
+import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import {
   Users,
   UserPlus,
@@ -77,14 +79,28 @@ export default function TeamPage() {
     }
   }, [currentOrg?.id, isAuthorized, loadTeamData]);
 
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    variant?: 'danger' | 'primary';
+    action?: () => Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+  });
+
   const handleRoleChange = async (memberId: string, newRole: MemberRole) => {
     if (!currentOrg) return;
     try {
       await CRMService.updateMemberRole(currentOrg.id, memberId, newRole);
+      toast.success('Member role updated!');
       await loadTeamData();
       await refreshWorkspace();
     } catch (err: any) {
-      alert(err.message || 'Failed to update member role');
+      toast.error(err.message || 'Failed to update member role');
     }
   };
 
@@ -92,35 +108,58 @@ export default function TeamPage() {
     if (!currentOrg) return;
     try {
       await CRMService.updateMemberStatus(currentOrg.id, memberId, newStatus);
+      toast.success(`Member status updated to ${newStatus}`);
       await loadTeamData();
       await refreshWorkspace();
     } catch (err: any) {
-      alert(err.message || 'Failed to update member status');
+      toast.error(err.message || 'Failed to update member status');
     }
   };
 
-  const handleRemoveMember = async (memberId: string) => {
+  const handleRemoveMember = (memberId: string) => {
     if (!currentOrg) return;
-    if (!confirm('Are you sure you want to remove this member from the organization?')) return;
-    try {
-      await CRMService.removeMember(currentOrg.id, memberId);
-      await loadTeamData();
-      await refreshWorkspace();
-    } catch (err: any) {
-      alert(err.message || 'Failed to remove member');
-    }
+    setConfirmState({
+      isOpen: true,
+      title: 'Remove Member',
+      message: 'Are you sure you want to remove this member from the organization?',
+      confirmText: 'Remove Member',
+      variant: 'danger',
+      action: async () => {
+        try {
+          await CRMService.removeMember(currentOrg.id, memberId);
+          toast.success('Member removed');
+          await loadTeamData();
+          await refreshWorkspace();
+        } catch (err: any) {
+          toast.error(err.message || 'Failed to remove member');
+        } finally {
+          setConfirmState((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
   };
 
-  const handleLeaveOrganization = async () => {
+  const handleLeaveOrganization = () => {
     if (!currentOrg || !currentUser) return;
-    if (!confirm(`Are you sure you want to leave ${currentOrg.name}?`)) return;
-    try {
-      await CRMService.leaveOrganization(currentOrg.id, currentUser.id);
-      await refreshWorkspace();
-      router.push('/onboarding');
-    } catch (err: any) {
-      alert(err.message || 'Failed to leave organization');
-    }
+    setConfirmState({
+      isOpen: true,
+      title: 'Leave Organization',
+      message: `Are you sure you want to leave ${currentOrg.name}?`,
+      confirmText: 'Leave',
+      variant: 'danger',
+      action: async () => {
+        try {
+          await CRMService.leaveOrganization(currentOrg.id, currentUser.id);
+          toast.success(`Left ${currentOrg.name}`);
+          await refreshWorkspace();
+          router.push('/onboarding');
+        } catch (err: any) {
+          toast.error(err.message || 'Failed to leave organization');
+        } finally {
+          setConfirmState((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
   };
 
   const handleAddMember = async (e: React.FormEvent) => {
@@ -129,27 +168,38 @@ export default function TeamPage() {
     try {
       const res = await CRMService.addMemberByEmail(currentOrg.id, inviteEmail, inviteRole, currentUser.id);
       if (res.addedDirectly) {
-        alert(`${inviteEmail} was found and immediately added to ${currentOrg.name} as ${inviteRole}!`);
+        toast.success(`${inviteEmail} was added as ${inviteRole}!`);
       } else {
-        alert(`${inviteEmail} has been added to ${currentOrg.name}. When they sign up or log in, this organization will automatically appear in their workspace list.`);
+        toast.info(`${inviteEmail} invited. Will be active on their next sign-in.`);
       }
       setIsInviteOpen(false);
       setInviteEmail('');
       await loadTeamData();
       await refreshWorkspace();
     } catch (err: any) {
-      alert(err.message || 'Failed to add member');
+      toast.error(err.message || 'Failed to add member');
     }
   };
 
-  const handleRevokeInvitation = async (invitationId: string) => {
-    if (!confirm('Remove this pending email?')) return;
-    try {
-      await CRMService.revokeInvitation(invitationId);
-      await loadTeamData();
-    } catch (err: any) {
-      alert(err.message || 'Failed to remove');
-    }
+  const handleRevokeInvitation = (invitationId: string) => {
+    setConfirmState({
+      isOpen: true,
+      title: 'Remove Pending Invitation',
+      message: 'Remove this pending invite email?',
+      confirmText: 'Remove',
+      variant: 'danger',
+      action: async () => {
+        try {
+          await CRMService.revokeInvitation(invitationId);
+          toast.success('Invitation removed');
+          await loadTeamData();
+        } catch (err: any) {
+          toast.error(err.message || 'Failed to remove');
+        } finally {
+          setConfirmState((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
   };
 
   if (!isAuthorized) {
@@ -479,6 +529,16 @@ export default function TeamPage() {
             </div>
           </div>
         )}
+        {/* In-UI Confirmation Dialog */}
+        <ConfirmDialog
+          isOpen={confirmState.isOpen}
+          title={confirmState.title}
+          message={confirmState.message}
+          confirmText={confirmState.confirmText}
+          variant={confirmState.variant}
+          onConfirm={() => confirmState.action?.()}
+          onCancel={() => setConfirmState((prev) => ({ ...prev, isOpen: false }))}
+        />
       </div>
     </AppShell>
   );

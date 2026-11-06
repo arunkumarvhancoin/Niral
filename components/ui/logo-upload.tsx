@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Upload, X, Image as ImageIcon, Link as LinkIcon, Check, Loader2 } from 'lucide-react';
+import { toast } from '../../lib/stores/toast-store';
 
 interface LogoUploadProps {
   value: string;
@@ -22,12 +23,12 @@ export function LogoUpload({ value, onChange, disabled = false, label = 'Organiz
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Please upload an image file (PNG, JPG, WebP, SVG)');
+      toast.error('Please upload an image file (PNG, JPG, WebP, SVG)');
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('File size exceeds 5MB limit');
+      toast.error('File size exceeds 5MB limit');
       return;
     }
 
@@ -83,7 +84,7 @@ export function LogoUpload({ value, onChange, disabled = false, label = 'Organiz
     };
 
     reader.onerror = () => {
-      alert('Failed to read file');
+      toast.error('Failed to read file');
       setIsProcessing(false);
     };
 

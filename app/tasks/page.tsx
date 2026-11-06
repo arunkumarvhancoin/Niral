@@ -6,6 +6,8 @@ import { useWorkspace } from '../../components/providers/workspace-provider';
 import { CRMService } from '../../lib/services/crm-service';
 import { Task, Activity, OrganizationMember } from '../../lib/types/crm';
 import { hasPermission } from '../../lib/permissions';
+import { toast } from '../../lib/stores/toast-store';
+import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import {
   CheckSquare,
   Plus,
@@ -125,14 +127,28 @@ export default function TasksAndFeedPage() {
 
     try {
       await CRMService.updateTask(task.id, currentOrg.id, { status: newStatus });
+      toast.success(newStatus === 'completed' ? 'Task marked complete!' : 'Task status updated');
       await loadTasks();
       // Reload activities to reflect newly completed items in feed
       await loadActivities();
     } catch (err: any) {
-      alert(err.message || 'Update failed');
+      toast.error(err.message || 'Update failed');
       await loadTasks();
     }
   };
+
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    variant?: 'danger' | 'primary';
+    action?: () => Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+  });
 
   const handleTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,6 +156,7 @@ export default function TasksAndFeedPage() {
     try {
       if (editingTask) {
         await CRMService.updateTask(editingTask.id, currentOrg.id, taskFormData);
+        toast.success(`Task "${taskFormData.title}" updated!`);
       } else {
         await CRMService.createTask(
           currentOrg.id,
@@ -149,23 +166,35 @@ export default function TasksAndFeedPage() {
           },
           currentUser.id
         );
+        toast.success(`Task "${taskFormData.title}" created successfully!`);
       }
       setIsTaskModalOpen(false);
       await loadTasks();
     } catch (err: any) {
-      alert(err.message || 'Operation failed');
+      toast.error(err.message || 'Operation failed');
     }
   };
 
-  const handleDeleteTask = async (taskId: string) => {
+  const handleDeleteTask = (taskId: string) => {
     if (!currentOrg || !canDeleteTask) return;
-    if (!confirm('Delete this task?')) return;
-    try {
-      await CRMService.deleteTask(taskId, currentOrg.id);
-      await loadTasks();
-    } catch (err: any) {
-      alert(err.message || 'Delete failed');
-    }
+    setConfirmState({
+      isOpen: true,
+      title: 'Delete Task',
+      message: 'Are you sure you want to permanently delete this task?',
+      confirmText: 'Delete Task',
+      variant: 'danger',
+      action: async () => {
+        try {
+          await CRMService.deleteTask(taskId, currentOrg.id);
+          toast.success('Task deleted successfully');
+          await loadTasks();
+        } catch (err: any) {
+          toast.error(err.message || 'Delete failed');
+        } finally {
+          setConfirmState((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
   };
 
   const handleActivitySubmit = async (e: React.FormEvent) => {
@@ -173,11 +202,12 @@ export default function TasksAndFeedPage() {
     if (!currentOrg || !currentUser) return;
     try {
       await CRMService.createActivity(currentOrg.id, activityFormData, currentUser.id);
+      toast.success('Activity logged to feed!');
       setIsActivityModalOpen(false);
       setActivityFormData({ type: 'note', title: '', description: '' });
       await loadActivities();
     } catch (err: any) {
-      alert(err.message || 'Failed to record activity');
+      toast.error(err.message || 'Failed to record activity');
     }
   };
 
@@ -723,6 +753,16 @@ export default function TasksAndFeedPage() {
             </div>
           </div>
         )}
+        {/* In-UI Confirmation Dialog */}
+        <ConfirmDialog
+          isOpen={confirmState.isOpen}
+          title={confirmState.title}
+          message={confirmState.message}
+          confirmText={confirmState.confirmText}
+          variant={confirmState.variant}
+          onConfirm={() => confirmState.action?.()}
+          onCancel={() => setConfirmState((prev) => ({ ...prev, isOpen: false }))}
+        />
       </div>
     </AppShell>
   );

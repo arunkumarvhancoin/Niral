@@ -6,6 +6,8 @@ import { useWorkspace } from '../../components/providers/workspace-provider';
 import { CRMService } from '../../lib/services/crm-service';
 import { Deal, Pipeline, PipelineStage, Contact } from '../../lib/types/crm';
 import { hasPermission } from '../../lib/permissions';
+import { toast } from '../../lib/stores/toast-store';
+import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import {
   BarChart3,
   Plus,
@@ -104,9 +106,10 @@ export default function DealsPage() {
         status: nextStatus,
       });
 
+      toast.success('Deal stage updated!');
       await loadPipelineData();
     } catch (err: any) {
-      alert(err.message || 'Failed to update deal stage');
+      toast.error(err.message || 'Failed to update deal stage');
       await loadPipelineData();
     }
   };
@@ -143,27 +146,52 @@ export default function DealsPage() {
     }
   };
 
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    variant?: 'danger' | 'primary';
+    action?: () => Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentOrg || !currentUser) return;
     try {
       await CRMService.createDeal(currentOrg.id, formData, currentUser.id);
+      toast.success(`Deal "${formData.title}" created successfully!`);
       setIsModalOpen(false);
       await loadPipelineData();
     } catch (err: any) {
-      alert(err.message || 'Creation failed');
+      toast.error(err.message || 'Creation failed');
     }
   };
 
-  const handleDelete = async (dealId: string) => {
+  const handleDelete = (dealId: string) => {
     if (!currentOrg || !canDelete) return;
-    if (!confirm('Delete this deal?')) return;
-    try {
-      await CRMService.deleteDeal(dealId, currentOrg.id);
-      await loadPipelineData();
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete');
-    }
+    setConfirmState({
+      isOpen: true,
+      title: 'Delete Deal',
+      message: 'Are you sure you want to permanently delete this deal? This action cannot be undone.',
+      confirmText: 'Delete Deal',
+      variant: 'danger',
+      action: async () => {
+        try {
+          await CRMService.deleteDeal(dealId, currentOrg.id);
+          toast.success('Deal deleted successfully');
+          await loadPipelineData();
+        } catch (err: any) {
+          toast.error(err.message || 'Failed to delete deal');
+        } finally {
+          setConfirmState((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
   };
 
   const activePipeline = pipelines[0];
@@ -509,6 +537,16 @@ export default function DealsPage() {
             </div>
           </div>
         )}
+        {/* In-UI Confirmation Dialog */}
+        <ConfirmDialog
+          isOpen={confirmState.isOpen}
+          title={confirmState.title}
+          message={confirmState.message}
+          confirmText={confirmState.confirmText}
+          variant={confirmState.variant}
+          onConfirm={() => confirmState.action?.()}
+          onCancel={() => setConfirmState((prev) => ({ ...prev, isOpen: false }))}
+        />
       </div>
     </AppShell>
   );

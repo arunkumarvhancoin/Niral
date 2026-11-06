@@ -52,17 +52,6 @@ export function Header() {
 
       {/* Action items */}
       <div className="flex items-center space-x-3">
-        {/* Quick Tour Button */}
-        <button
-          type="button"
-          onClick={() => openTutorial(0)}
-          className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-primary-700 bg-slate-100/80 hover:bg-primary-50 rounded-lg border border-slate-200/80 transition-colors"
-          title="Open CRM Interactive Tutorial"
-        >
-          <BookOpen className="w-3.5 h-3.5 text-primary-600" />
-          <span className="hidden sm:inline">Guide & Tour</span>
-        </button>
-
         {/* User profile dropdown */}
         <div className="relative" ref={userMenuRef}>
           <button

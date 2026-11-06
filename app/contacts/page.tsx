@@ -6,6 +6,8 @@ import { useWorkspace } from '../../components/providers/workspace-provider';
 import { CRMService } from '../../lib/services/crm-service';
 import { Contact, Lead } from '../../lib/types/crm';
 import { hasPermission } from '../../lib/permissions';
+import { toast } from '../../lib/stores/toast-store';
+import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import {
   Users2,
   Plus,
@@ -117,6 +119,19 @@ export default function ContactsPage() {
     setIsModalOpen(true);
   };
 
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    variant?: 'danger' | 'primary';
+    action?: () => Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentOrg || !currentUser) return;
@@ -135,8 +150,9 @@ export default function ContactsPage() {
 
       if (editingContact) {
         await CRMService.updateContact(editingContact.id, currentOrg.id, contactPayload);
+        toast.success(`Contact "${formData.first_name} ${formData.last_name}" updated!`);
       } else {
-        const created = await CRMService.createContact(currentOrg.id, contactPayload, currentUser.id);
+        await CRMService.createContact(currentOrg.id, contactPayload, currentUser.id);
 
         // If marked as lead, automatically create corresponding Lead
         if (formData.status === 'lead') {
@@ -161,24 +177,36 @@ export default function ContactsPage() {
             currentUser.id
           );
         }
+        toast.success(`Contact "${formData.first_name} ${formData.last_name}" created successfully!`);
       }
 
       setIsModalOpen(false);
       await loadContacts();
     } catch (err: any) {
-      alert(err.message || 'Operation failed');
+      toast.error(err.message || 'Operation failed');
     }
   };
 
-  const handleDelete = async (contactId: string) => {
+  const handleDelete = (contactId: string) => {
     if (!currentOrg) return;
-    if (!confirm('Are you sure you want to delete this contact?')) return;
-    try {
-      await CRMService.deleteContact(contactId, currentOrg.id);
-      await loadContacts();
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete');
-    }
+    setConfirmState({
+      isOpen: true,
+      title: 'Delete Contact',
+      message: 'Are you sure you want to permanently delete this contact? This cannot be undone.',
+      confirmText: 'Delete Contact',
+      variant: 'danger',
+      action: async () => {
+        try {
+          await CRMService.deleteContact(contactId, currentOrg.id);
+          toast.success('Contact deleted successfully');
+          await loadContacts();
+        } catch (err: any) {
+          toast.error(err.message || 'Failed to delete contact');
+        } finally {
+          setConfirmState((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
   };
 
   const getAvatarColor = (name: string) => {
@@ -634,6 +662,16 @@ export default function ContactsPage() {
             </div>
           </div>
         )}
+        {/* In-UI Confirmation Dialog */}
+        <ConfirmDialog
+          isOpen={confirmState.isOpen}
+          title={confirmState.title}
+          message={confirmState.message}
+          confirmText={confirmState.confirmText}
+          variant={confirmState.variant}
+          onConfirm={() => confirmState.action?.()}
+          onCancel={() => setConfirmState((prev) => ({ ...prev, isOpen: false }))}
+        />
       </div>
     </AppShell>
   );
