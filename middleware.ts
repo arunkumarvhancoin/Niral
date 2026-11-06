@@ -1,13 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { updateSession } from './lib/supabase/middleware';
 
-export async function middleware(request: NextRequest) {
-  try {
-    return await updateSession(request);
-  } catch (error) {
-    console.error('Middleware execution failed, falling back to next():', error);
-    return NextResponse.next();
-  }
+export function middleware(_request: NextRequest) {
+  return NextResponse.next();
 }
 
 export const config = {
@@ -22,4 +16,3 @@ export const config = {
     '/((?!_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };
-
