@@ -3,7 +3,7 @@
 A modern, scalable, multi-tenant CRM platform built with **Next.js (App Router)**, **TypeScript**, **Tailwind CSS v3**, **Supabase Authentication**, **Supabase PostgreSQL & Row Level Security (RLS)**, and **Zustand**.
 
 ---
-
+ 
 ## Architecture & Tenant Isolation
 
 ### 1. Hybrid Organization Model
