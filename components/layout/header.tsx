@@ -12,14 +12,11 @@ import {
   HelpCircle,
   ChevronRight,
   Shield,
-  BookOpen,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useTutorialStore } from '../../lib/stores/tutorial-store';
 
 export function Header() {
   const { currentUser, currentOrg, currentRole, currentStatus, signOut } = useWorkspace();
-  const { openTutorial } = useTutorialStore();
   const pathname = usePathname();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
