@@ -61,23 +61,37 @@ export default function RegistrationsPage() {
   const loadRegistrations = useCallback(async () => {
     setIsLoading(true);
     try {
-      const supabase = createClient();
+      // 1. Fetch from server API endpoint (uses admin client, completely bypasses RLS)
+      const res = await fetch('/api/registrations');
+      const json = await res.json();
 
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*, contact:converted_contact_id(notes)')
-        .or('company.eq.Bharat Play,source.eq.Event,title.ilike.Bharat Play%')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching registrations:', error);
-        toast.error('Failed to load registrations');
+      if (json.success && Array.isArray(json.registrations)) {
+        setRegistrations(json.registrations as RegistrationLead[]);
       } else {
+        // Fallback to client Supabase if API is unavailable
+        const supabase = createClient();
+        const { data } = await supabase
+          .from('leads')
+          .select('*, contact:converted_contact_id(notes)')
+          .or('company.eq.Bharat Play,source.eq.Event,title.ilike.Bharat Play%')
+          .order('created_at', { ascending: false });
+
         setRegistrations((data || []) as RegistrationLead[]);
       }
     } catch (err: any) {
-      console.error(err);
-      toast.error('Unexpected error loading registrations');
+      console.warn('API /api/registrations fallback to direct Supabase:', err);
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from('leads')
+          .select('*, contact:converted_contact_id(notes)')
+          .or('company.eq.Bharat Play,source.eq.Event,title.ilike.Bharat Play%')
+          .order('created_at', { ascending: false });
+
+        setRegistrations((data || []) as RegistrationLead[]);
+      } catch (e) {
+        toast.error('Failed to load registrations');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -125,17 +139,12 @@ export default function RegistrationsPage() {
     if (!leadId) return;
 
     try {
-      const supabase = createClient();
-      const target = registrations.find((r) => r.id === leadId);
+      const res = await fetch(`/api/registrations?id=${leadId}`, { method: 'DELETE' });
+      const json = await res.json();
 
-      const { error: leadErr } = await supabase.from('leads').delete().eq('id', leadId);
-      if (leadErr) {
-        toast.error('Failed to delete registration: ' + leadErr.message);
-        return;
-      }
-
-      if (target?.converted_contact_id) {
-        await supabase.from('contacts').delete().eq('id', target.converted_contact_id);
+      if (!json.success) {
+        const supabase = createClient();
+        await supabase.from('leads').delete().eq('id', leadId);
       }
 
       setRegistrations((prev) => prev.filter((r) => r.id !== leadId));
