@@ -6,7 +6,7 @@ import { AppShell } from '../../components/layout/app-shell';
 import { useWorkspace } from '../../components/providers/workspace-provider';
 import { CRMService } from '../../lib/services/crm-service';
 import { Lead } from '../../lib/types/crm';
-import { hasPermission } from '../../lib/permissions';
+import { hasPermission, isBharatPlay } from '../../lib/permissions';
 import { toast } from '../../lib/stores/toast-store';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import {
@@ -187,14 +187,17 @@ export default function LeadsPage() {
     });
   };
 
-  // Exclude Bharat Play event workshop registrations so they are exclusively displayed on the dedicated /bharat-play page
+  const isBPOrg = isBharatPlay(currentOrg);
+  // Exclude Bharat Play event workshop registrations so they are exclusively displayed on the dedicated /registrations page for Bharat Play
   const isBharatPlayRegistration = (lead: Lead) =>
-    lead.company === 'Bharat Play' ||
-    lead.source === 'Event' ||
-    lead.title?.toLowerCase().startsWith('bharat play:');
+    isBPOrg && (
+      lead.company === 'Bharat Play' ||
+      lead.source === 'Event' ||
+      lead.title?.toLowerCase().startsWith('bharat play:')
+    );
 
   const displayLeads = leads.filter((l) => !isBharatPlayRegistration(l));
-  const bharatPlayCount = leads.filter(isBharatPlayRegistration).length;
+  const bharatPlayCount = isBPOrg ? leads.filter(isBharatPlayRegistration).length : 0;
 
   const newLeadsCount = displayLeads.filter((l) => l.status === 'New').length;
   const qualifiedCount = displayLeads.filter((l) => l.status === 'Qualified').length;
@@ -205,7 +208,7 @@ export default function LeadsPage() {
     <AppShell>
       <div className="space-y-6">
         {/* Dedicated Bharat Play Navigation Banner */}
-        {bharatPlayCount > 0 && (
+        {isBPOrg && bharatPlayCount > 0 && (
           <div className="bg-gradient-to-r from-sky-50 via-indigo-50 to-white border border-sky-200/80 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center space-x-3">
               <div className="w-9 h-9 rounded-lg bg-sky-600 text-white flex items-center justify-center font-bold text-sm shadow-xs flex-shrink-0">

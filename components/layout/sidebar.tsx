@@ -20,7 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { useWorkspace } from '../providers/workspace-provider';
-import { hasPermission } from '../../lib/permissions';
+import { hasPermission, isBharatPlay } from '../../lib/permissions';
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -29,15 +29,16 @@ interface SidebarProps {
 
 export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
-  const { currentRole, currentStatus, currentUser, signOut } = useWorkspace();
+  const { currentOrg, currentRole, currentStatus, currentUser, signOut } = useWorkspace();
 
   const canViewTeam = currentRole === 'Owner' || currentRole === 'Admin' || currentRole === 'Manager';
+  const isBharatPlayOrg = isBharatPlay(currentOrg);
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Contacts', href: '/contacts', icon: Users2 },
     { name: 'Leads', href: '/leads', icon: Target },
-    { name: 'Registrations', href: '/registrations', icon: Ticket },
+    ...(isBharatPlayOrg ? [{ name: 'Registrations', href: '/registrations', icon: Ticket }] : []),
     { name: 'Deals', href: '/deals', icon: BarChart3 },
     { name: 'Tasks', href: '/tasks', icon: CheckSquare },
     ...(canViewTeam ? [{ name: 'Team', href: '/team', icon: UserCheck }] : []),

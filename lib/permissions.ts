@@ -145,3 +145,17 @@ export function isOrgAdmin(role: MemberRole | null | undefined, status: MemberSt
   return hasAnyRole(role, status, ['Owner', 'Admin']);
 }
 
+/**
+ * Checks if the given organization is Bharat Play (by ID, slug, or name).
+ * Registrations and workshop modules are strictly exclusive to Bharat Play.
+ */
+export function isBharatPlay(org?: { id?: string; name?: string; slug?: string } | null): boolean {
+  if (!org) return false;
+  if (org.id === 'e3ee4e16-abca-43ca-b556-8d0d5635ce47') return true;
+  const slug = (org.slug || '').toLowerCase();
+  if (slug === 'bharat-play' || slug.startsWith('bharat-play')) return true;
+  const name = (org.name || '').toLowerCase();
+  if (name.includes('bharat play')) return true;
+  return false;
+}
+

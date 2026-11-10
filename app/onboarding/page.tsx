@@ -16,7 +16,7 @@ import { LogoUpload } from '../../components/ui/logo-upload';
 import { toast } from '../../lib/stores/toast-store';
 
 function OnboardingContent() {
-  const { currentUser, memberships, refreshWorkspace, switchOrganization } = useWorkspace();
+  const { currentUser, memberships, setCurrentOrg, refreshWorkspace, switchOrganization } = useWorkspace();
   const searchParams = useSearchParams();
   const initialStep = (searchParams.get('step') as 'select' | 'create') || 'select';
 
@@ -57,10 +57,16 @@ function OnboardingContent() {
         slug,
       });
 
+      // 1. Immediately activate new organization in store & cookie
+      setCurrentOrg(organization, 'Owner', 'approved');
+
+      // 2. Refresh memberships in background
+      await refreshWorkspace(true, organization.id);
+
       toast.success(`Organization "${createData.name}" created!`);
-      await refreshWorkspace();
-      await switchOrganization(organization.id);
-      router.push('/dashboard');
+
+      // 3. Directly enter dashboard
+      router.replace('/dashboard');
     } catch (err: any) {
       toast.error(err.message || 'Failed to create organization');
     } finally {

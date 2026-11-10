@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '../../../lib/supabase/server';
 import { createAdminClient } from '../../../lib/supabase/admin';
+import { isBharatPlay } from '../../../lib/permissions';
 
 function corsHeaders() {
   return {
@@ -76,6 +77,24 @@ export async function GET(request: NextRequest) {
           error: 'Access denied: You are not an approved member of this organization.',
         },
         { status: 403, headers: corsHeaders() }
+      );
+    }
+
+    // Verify target organization is Bharat Play (registrations module is exclusive to Bharat Play)
+    const { data: orgData } = await supabase
+      .from('organizations')
+      .select('id, name, slug')
+      .eq('id', targetOrgId)
+      .maybeSingle();
+
+    if (!isBharatPlay(orgData)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Registrations are only available for Bharat Play.',
+          registrations: [],
+        },
+        { status: 400, headers: corsHeaders() }
       );
     }
 

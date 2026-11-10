@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { AppShell } from '../../components/layout/app-shell';
 import { useWorkspace } from '../../components/providers/workspace-provider';
 import { createClient } from '../../lib/supabase/client';
 import { Lead } from '../../lib/types/crm';
 import { toast } from '../../lib/stores/toast-store';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
+import { isBharatPlay } from '../../lib/permissions';
 import {
   Search,
   Users,
@@ -23,6 +25,7 @@ import {
   Copy,
   Check,
   ZoomIn,
+  Ticket,
 } from 'lucide-react';
 
 interface RegistrationLead extends Lead {
@@ -58,10 +61,14 @@ export default function RegistrationsPage() {
   });
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const router = useRouter();
   const { currentOrg, currentRole, currentStatus } = useWorkspace();
 
   const loadRegistrations = useCallback(async () => {
-    if (!currentOrg?.id) return;
+    if (!currentOrg?.id || !isBharatPlay(currentOrg)) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
       // 1. Fetch strictly for active organization with user session check
@@ -263,6 +270,31 @@ export default function RegistrationsPage() {
   const totalRegistrations = registrations.length;
   const totalAttendees = registrations.reduce((sum, r) => sum + extractHeadcount(r.title), 0);
   const totalPayableRupees = registrations.reduce((sum, r) => sum + (Number(r.value) || 0), 0);
+
+  // Non-Bharat Play organizations do not have access to the registrations module
+  if (!isBharatPlay(currentOrg)) {
+    return (
+      <AppShell>
+        <div className="max-w-md mx-auto py-20 px-4 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4 ring-1 ring-amber-500/20 shadow-xs">
+            <Ticket className="w-8 h-8 text-amber-500" />
+          </div>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Module Not Available</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-2 leading-relaxed">
+            The <strong>Registrations</strong> module is a custom workshop integration built exclusively for the <strong>Bharat Play</strong> workspace. It is disabled for <strong>{currentOrg?.name || 'this organization'}</strong>.
+          </p>
+          <div className="mt-6">
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="inline-flex items-center px-4 py-2 text-xs font-semibold rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors shadow-xs"
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>

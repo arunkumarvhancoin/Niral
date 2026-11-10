@@ -40,6 +40,7 @@ export interface DashboardMetrics {
   wonRevenue: number;
   recentActivities?: Activity[];
   recentRegistrations?: DashboardRecentRegistration[];
+  recentDeals?: { id: string; name: string; value: number; status: string; created_at: string }[];
   upcomingTasks: Task[];
   leadConversionRate: number;
 }
@@ -792,12 +793,14 @@ export const CRMService = {
       { data: dealsData },
       { data: tasksData },
       { data: recentRegistrationsData },
+      { data: recentDealsData },
     ] = await Promise.all([
       supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('organization_id', orgId),
       supabase.from('leads').select('id, status').eq('organization_id', orgId),
       supabase.from('deals').select('id, value, status').eq('organization_id', orgId),
       supabase.from('tasks').select('*').eq('organization_id', orgId).neq('status', 'completed').order('created_at', { ascending: false }).limit(5),
       supabase.from('leads').select('id, title, value, status, source, created_at, contact:converted_contact_id(first_name, last_name, email)').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(5),
+      supabase.from('deals').select('id, name, value, status, created_at').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(5),
     ]);
 
     const leads = leadsData || [];
@@ -821,6 +824,7 @@ export const CRMService = {
       wonRevenue,
       recentActivities: [],
       recentRegistrations: (recentRegistrationsData || []) as any,
+      recentDeals: (recentDealsData || []) as any,
       upcomingTasks: (tasksData || []) as Task[],
       leadConversionRate: conversionRate,
     };

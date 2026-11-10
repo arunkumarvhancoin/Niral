@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { AppShell } from '../../components/layout/app-shell';
 import { useWorkspace } from '../../components/providers/workspace-provider';
 import { CRMService, DashboardMetrics } from '../../lib/services/crm-service';
+import { isBharatPlay } from '../../lib/permissions';
 import {
   Users2,
   Target,
@@ -235,62 +236,118 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Recent Registrations */}
-          <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs p-5">
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
-              <div className="flex items-center space-x-2">
-                <div className="w-6 h-6 rounded-md bg-purple-50 text-purple-600 flex items-center justify-center">
-                  <Ticket className="w-4 h-4" />
+          {/* Recent Deals for standard CRM workspaces, or Recent Registrations for Bharat Play */}
+          {isBharatPlay(currentOrg) ? (
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs p-5">
+              <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+                <div className="flex items-center space-x-2">
+                  <div className="w-6 h-6 rounded-md bg-purple-50 text-purple-600 flex items-center justify-center">
+                    <Ticket className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-semibold text-slate-900 text-sm">Recent Registrations</h3>
                 </div>
-                <h3 className="font-semibold text-slate-900 text-sm">Recent Registrations</h3>
+                <Link href="/registrations" className="text-xs text-primary-600 hover:text-primary-700 font-semibold flex items-center">
+                  <span>View all</span>
+                  <ArrowRight className="w-3 h-3 ml-1" />
+                </Link>
               </div>
-              <Link href="/registrations" className="text-xs text-primary-600 hover:text-primary-700 font-semibold flex items-center">
-                <span>View all</span>
-                <ArrowRight className="w-3 h-3 ml-1" />
-              </Link>
+
+              <div className="divide-y divide-slate-100 mt-1">
+                {!metrics?.recentRegistrations || metrics?.recentRegistrations.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    <Ticket className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                    No registrations recorded yet
+                  </div>
+                ) : (
+                  metrics.recentRegistrations.map((reg) => {
+                    const attendeeName = reg.contact?.first_name
+                      ? `${reg.contact.first_name} ${reg.contact.last_name || ''}`.trim()
+                      : reg.title || 'Attendee';
+
+                    return (
+                      <div key={reg.id} className="py-3 flex items-start justify-between hover:bg-slate-50/50 rounded-lg px-2 -mx-2 transition-colors">
+                        <div className="flex items-start space-x-3 min-w-0 flex-1">
+                          <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0 mt-0.5 ring-1 ring-purple-500/10">
+                            <Ticket className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-slate-800 truncate">{attendeeName}</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5 truncate">{reg.contact?.email || reg.source || 'Direct Registration'}</p>
+                            <span className="text-[10px] text-slate-400 mt-1 block">
+                              {new Date(reg.created_at).toLocaleDateString()} &bull;{' '}
+                              {new Date(reg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right ml-3 flex-shrink-0">
+                          <span className="text-xs font-bold text-slate-900 block">
+                            {reg.value ? formatCurrency(reg.value) : '—'}
+                          </span>
+                          <span className="inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 capitalize">
+                            {reg.status || 'Registered'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
-
-            <div className="divide-y divide-slate-100 mt-1">
-              {!metrics?.recentRegistrations || metrics?.recentRegistrations.length === 0 ? (
-                <div className="py-8 text-center text-xs text-slate-400">
-                  <Ticket className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                  No registrations recorded yet
+          ) : (
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs p-5">
+              <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+                <div className="flex items-center space-x-2">
+                  <div className="w-6 h-6 rounded-md bg-amber-50 text-amber-600 flex items-center justify-center">
+                    <BarChart3 className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-semibold text-slate-900 text-sm">Recent Deals</h3>
                 </div>
-              ) : (
-                metrics.recentRegistrations.map((reg) => {
-                  const attendeeName = reg.contact?.first_name
-                    ? `${reg.contact.first_name} ${reg.contact.last_name || ''}`.trim()
-                    : reg.title || 'Attendee';
+                <Link href="/deals" className="text-xs text-primary-600 hover:text-primary-700 font-semibold flex items-center">
+                  <span>View pipeline</span>
+                  <ArrowRight className="w-3 h-3 ml-1" />
+                </Link>
+              </div>
 
-                  return (
-                    <div key={reg.id} className="py-3 flex items-start justify-between hover:bg-slate-50/50 rounded-lg px-2 -mx-2 transition-colors">
+              <div className="divide-y divide-slate-100 mt-1">
+                {!metrics?.recentDeals || metrics?.recentDeals.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    <BarChart3 className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                    No deals created yet
+                  </div>
+                ) : (
+                  metrics.recentDeals.map((deal) => (
+                    <div key={deal.id} className="py-3 flex items-start justify-between hover:bg-slate-50/50 rounded-lg px-2 -mx-2 transition-colors">
                       <div className="flex items-start space-x-3 min-w-0 flex-1">
-                        <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0 mt-0.5 ring-1 ring-purple-500/10">
-                          <Ticket className="w-3.5 h-3.5" />
+                        <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 mt-0.5 ring-1 ring-amber-500/10">
+                          <BarChart3 className="w-3.5 h-3.5" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-slate-800 truncate">{attendeeName}</p>
-                          <p className="text-[11px] text-slate-500 mt-0.5 truncate">{reg.contact?.email || reg.source || 'Direct Registration'}</p>
+                          <p className="text-xs font-semibold text-slate-800 truncate">{deal.name}</p>
                           <span className="text-[10px] text-slate-400 mt-1 block">
-                            {new Date(reg.created_at).toLocaleDateString()} &bull;{' '}
-                            {new Date(reg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(deal.created_at).toLocaleDateString()}
                           </span>
                         </div>
                       </div>
                       <div className="text-right ml-3 flex-shrink-0">
                         <span className="text-xs font-bold text-slate-900 block">
-                          {reg.value ? formatCurrency(reg.value) : '—'}
+                          {deal.value ? formatCurrency(deal.value) : '—'}
                         </span>
-                        <span className="inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 capitalize">
-                          {reg.status || 'Registered'}
+                        <span className={`inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded capitalize ${
+                          deal.status === 'won'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : deal.status === 'lost'
+                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
+                        }`}>
+                          {deal.status || 'Open'}
                         </span>
                       </div>
                     </div>
-                  );
-                })
-              )}
+                  ))
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </AppShell>

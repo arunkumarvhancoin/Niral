@@ -14,8 +14,9 @@ interface WorkspaceContextType {
   currentStatus: MemberStatus | null;
   memberships: { organization: Organization; role: MemberRole; status: MemberStatus }[];
   isLoading: boolean;
+  setCurrentOrg: (org: Organization, role: MemberRole, status: MemberStatus) => void;
   switchOrganization: (orgId: string) => Promise<void>;
-  refreshWorkspace: (silent?: boolean) => Promise<void>;
+  refreshWorkspace: (silent?: boolean, preferredOrgId?: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -40,7 +41,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  const refreshWorkspace = useCallback(async (silent: boolean = false) => {
+  const refreshWorkspace = useCallback(async (silent: boolean = false, preferredOrgId?: string) => {
     try {
       const user = await CRMService.getActiveUser();
       setCurrentUser(user);
@@ -65,8 +66,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
       const approvedMemberships = userMemberships.filter((m) => m.status === 'approved');
 
-      // Check cookie or previous active org
-      let targetMembership = approvedMemberships.find((m) => m.organization.id === currentOrg?.id);
+      // Check preferredOrgId first, then cookie or previous active org
+      const targetId = preferredOrgId || currentOrg?.id;
+      let targetMembership = approvedMemberships.find((m) => m.organization.id === targetId);
 
       // If active org is invalid or not approved, pick first approved
       if (!targetMembership && approvedMemberships.length > 0) {
@@ -119,7 +121,18 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const switchOrganization = async (orgId: string) => {
-    const membership = memberships.find((m) => m.organization.id === orgId);
+    let membership = memberships.find((m) => m.organization.id === orgId);
+
+    // If not in local store yet, fetch fresh memberships directly from Supabase
+    if (!membership) {
+      const user = await CRMService.getActiveUser();
+      if (user) {
+        const freshMemberships = await CRMService.getUserOrganizations(user.id);
+        setMemberships(freshMemberships);
+        membership = freshMemberships.find((m) => m.organization.id === orgId);
+      }
+    }
+
     if (!membership) {
       throw new Error('Not a member of this organization');
     }
@@ -148,6 +161,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         currentStatus,
         memberships,
         isLoading,
+        setCurrentOrg,
         switchOrganization,
         refreshWorkspace,
         signOut,
