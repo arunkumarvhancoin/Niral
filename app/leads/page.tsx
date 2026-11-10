@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { AppShell } from '../../components/layout/app-shell';
 import { useWorkspace } from '../../components/providers/workspace-provider';
 import { CRMService } from '../../lib/services/crm-service';
@@ -25,6 +26,8 @@ import {
   Sparkles,
   TrendingUp,
   CheckCircle2,
+  Ticket,
+  ChevronRight,
 } from 'lucide-react';
 
 export default function LeadsPage() {
@@ -184,14 +187,49 @@ export default function LeadsPage() {
     });
   };
 
-  const newLeadsCount = leads.filter((l) => l.status === 'New').length;
-  const qualifiedCount = leads.filter((l) => l.status === 'Qualified').length;
-  const convertedCount = leads.filter((l) => l.status === 'Converted').length;
-  const highPriorityCount = leads.filter((l) => l.priority === 'High' || l.priority === 'Urgent').length;
+  // Exclude Bharat Play event workshop registrations so they are exclusively displayed on the dedicated /bharat-play page
+  const isBharatPlayRegistration = (lead: Lead) =>
+    lead.company === 'Bharat Play' ||
+    lead.source === 'Event' ||
+    lead.title?.toLowerCase().startsWith('bharat play:');
+
+  const displayLeads = leads.filter((l) => !isBharatPlayRegistration(l));
+  const bharatPlayCount = leads.filter(isBharatPlayRegistration).length;
+
+  const newLeadsCount = displayLeads.filter((l) => l.status === 'New').length;
+  const qualifiedCount = displayLeads.filter((l) => l.status === 'Qualified').length;
+  const convertedCount = displayLeads.filter((l) => l.status === 'Converted').length;
+  const highPriorityCount = displayLeads.filter((l) => l.priority === 'High' || l.priority === 'Urgent').length;
 
   return (
     <AppShell>
       <div className="space-y-6">
+        {/* Dedicated Bharat Play Navigation Banner */}
+        {bharatPlayCount > 0 && (
+          <div className="bg-gradient-to-r from-sky-50 via-indigo-50 to-white border border-sky-200/80 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-lg bg-sky-600 text-white flex items-center justify-center font-bold text-sm shadow-xs flex-shrink-0">
+                <Ticket className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-900">
+                  {bharatPlayCount} Bharat Play Workshop {bharatPlayCount === 1 ? 'Registration' : 'Registrations'}
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Managed separately in the dedicated Bharat Play page with group size, time slots, and WhatsApp messaging.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/bharat-play"
+              className="inline-flex items-center justify-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-white hover:bg-sky-50 border border-sky-300 text-sky-700 text-xs font-semibold shadow-xs transition-colors whitespace-nowrap self-start sm:self-auto"
+            >
+              <span>View Bharat Play Page</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -219,7 +257,7 @@ export default function LeadsPage() {
             </div>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total Leads</p>
-              <p className="text-base font-bold text-slate-900">{leads.length}</p>
+              <p className="text-base font-bold text-slate-900">{displayLeads.length}</p>
             </div>
           </div>
 
@@ -312,7 +350,7 @@ export default function LeadsPage() {
                       Loading leads...
                     </td>
                   </tr>
-                ) : leads.length === 0 ? (
+                ) : displayLeads.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-12 text-center">
                       <Target className="w-8 h-8 text-slate-300 mx-auto mb-2" />
@@ -321,7 +359,7 @@ export default function LeadsPage() {
                     </td>
                   </tr>
                 ) : (
-                  leads.map((lead) => (
+                  displayLeads.map((lead) => (
                     <tr key={lead.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3.5 px-4">
                         <div className="font-semibold text-slate-900">{lead.title}</div>
