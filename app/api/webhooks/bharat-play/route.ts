@@ -15,6 +15,113 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders() });
 }
 
+/**
+ * Helper to strictly find or auto-create the Bharat Play organization.
+ * Guarantees that leads from this webhook ONLY enter the Bharat Play workspace.
+ */
+async function getBharatPlayOrganization(
+  supabase: ReturnType<typeof createAdminClient>,
+  requestedOrgId?: string | null
+) {
+  // 1. If explicit organizationId passed, check if it matches Bharat Play
+  if (requestedOrgId) {
+    const { data: orgById } = await supabase
+      .from('organizations')
+      .select('id, name, slug')
+      .eq('id', requestedOrgId)
+      .single();
+
+    if (orgById) {
+      return orgById;
+    }
+  }
+
+  // 2. Look up strictly by slug 'bharat-play'
+  const { data: orgBySlug } = await supabase
+    .from('organizations')
+    .select('id, name, slug')
+    .eq('slug', 'bharat-play')
+    .maybeSingle();
+
+  if (orgBySlug) {
+    return orgBySlug;
+  }
+
+  // 3. Look up by case-insensitive name 'Bharat Play'
+  const { data: orgByName } = await supabase
+    .from('organizations')
+    .select('id, name, slug')
+    .ilike('name', '%Bharat Play%')
+    .maybeSingle();
+
+  if (orgByName) {
+    return orgByName;
+  }
+
+  // 4. Auto-create the Bharat Play organization if not yet created
+  const { data: createdOrg, error: createErr } = await supabase
+    .from('organizations')
+    .insert({
+      name: 'Bharat Play',
+      slug: 'bharat-play',
+      industry: 'Events & Entertainment',
+      company_size: '1-10 employees',
+      description: 'Bharat Play workshop registrations, gaming events, and attendee pipeline.',
+    })
+    .select('id, name, slug')
+    .single();
+
+  if (createErr) {
+    console.error('Failed to auto-create Bharat Play organization:', createErr);
+    throw new Error(`Unable to initialize Bharat Play organization: ${createErr.message}`);
+  }
+
+  return createdOrg;
+}
+
+/**
+ * GET /api/webhooks/bharat-play
+ * Returns status and the exact Organization ID for Bharat Play.
+ */
+export async function GET() {
+  try {
+    const supabase = createAdminClient();
+    const bharatPlayOrg = await getBharatPlayOrganization(supabase);
+
+    return NextResponse.json(
+      {
+        status: 'active',
+        service: 'Bharat Play CRM Ingestion Webhook',
+        organization: {
+          id: bharatPlayOrg.id,
+          name: bharatPlayOrg.name,
+          slug: bharatPlayOrg.slug,
+        },
+        samplePayload: {
+          fullName: 'John Doe',
+          email: 'name@example.com',
+          phone: '9876543210',
+          members: '1 (Solo)',
+          slot: '10:00 AM – 1:00 PM',
+          totalPayable: 649,
+          transactionId: 'UPI1234567890',
+          paymentScreenshot: 'https://...',
+        },
+      },
+      { headers: corsHeaders() }
+    );
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || 'Failed to inspect Bharat Play organization' },
+      { status: 500, headers: corsHeaders() }
+    );
+  }
+}
+
+/**
+ * POST /api/webhooks/bharat-play
+ * Strictly ingests new leads and contacts into the Bharat Play organization.
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -36,52 +143,23 @@ export async function POST(request: NextRequest) {
 
     const supabase = createAdminClient();
 
-    // 2. Resolve Organization ID (header, body, slug, or default first org)
+    // 2. Resolve Bharat Play Organization STRICTLY (never leaks to other organizations)
     const { searchParams } = new URL(request.url);
-    let targetOrgId =
+    const requestedOrgId =
       body.organizationId ||
       body.org_id ||
       request.headers.get('x-org-id') ||
       searchParams.get('org_id');
 
-    if (!targetOrgId && (body.orgSlug || body.org_slug || searchParams.get('org_slug'))) {
-      const slug = body.orgSlug || body.org_slug || searchParams.get('org_slug');
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('id')
-        .eq('slug', slug)
-        .single();
-      if (org) targetOrgId = org.id;
-    }
-
-    if (!targetOrgId) {
-      const { data: orgs } = await supabase
-        .from('organizations')
-        .select('id')
-        .order('created_at', { ascending: true })
-        .limit(1);
-
-      if (orgs && orgs.length > 0) {
-        targetOrgId = orgs[0].id;
-      }
-    }
-
-    if (!targetOrgId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'No organization found to assign this lead to. Please create a workspace first.',
-        },
-        { status: 404, headers: corsHeaders() }
-      );
-    }
+    const bharatPlayOrg = await getBharatPlayOrganization(supabase, requestedOrgId);
+    const targetOrgId = bharatPlayOrg.id;
 
     // 3. Normalize Name
     const nameParts = fullName.split(/\s+/);
     const firstName = nameParts[0] || 'Bharat Play Guest';
     const lastName = nameParts.slice(1).join(' ') || '';
 
-    // 4. Normalize details
+    // 4. Normalize registration fields
     const members = body.members || body.members_count || body.group_size || '1 (Solo)';
     const slot = body.slot || body.time_slot || body.chosen_slot || '10:00 AM – 1:00 PM';
     const rawAmount = body.totalPayable || body.amount || body.payable_amount || 649;
@@ -95,7 +173,7 @@ export async function POST(request: NextRequest) {
 
     const leadTitle = `Bharat Play: ${fullName || firstName} (${members} · ${slot})`;
 
-    // 5. Insert Lead into CRM
+    // 5. Insert Lead strictly into Bharat Play Organization
     const { data: lead, error: leadError } = await supabase
       .from('leads')
       .insert({
@@ -115,14 +193,14 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (leadError) {
-      console.error('Failed to insert lead:', leadError);
+      console.error('Failed to insert Bharat Play lead:', leadError);
       return NextResponse.json(
         { success: false, error: leadError.message },
         { status: 500, headers: corsHeaders() }
       );
     }
 
-    // 6. Create or update permanent Contact record
+    // 6. Create permanent Customer Contact record in Bharat Play Organization
     const registrationNotes = [
       `Bharat Play Reservation Details:`,
       `• Members/Group Size: ${members}`,
@@ -151,7 +229,7 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
 
-    // Link contact to lead if created
+    // Link contact to lead
     if (contact && lead) {
       await supabase
         .from('leads')
@@ -159,7 +237,7 @@ export async function POST(request: NextRequest) {
         .eq('id', lead.id);
     }
 
-    // 7. Log Activity in CRM Feed
+    // 7. Log Activity in Bharat Play Activity Feed
     await supabase.from('activities').insert({
       organization_id: targetOrgId,
       type: 'meeting',
@@ -172,7 +250,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        message: 'Bharat Play registration synced successfully to Niral CRM',
+        message: 'Bharat Play registration synced successfully to Bharat Play workspace',
+        organization: {
+          id: bharatPlayOrg.id,
+          name: bharatPlayOrg.name,
+          slug: bharatPlayOrg.slug,
+        },
         lead: {
           id: lead.id,
           title: lead.title,
@@ -191,4 +274,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
