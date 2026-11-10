@@ -56,6 +56,7 @@ export default function RegistrationsPage() {
     leadId: '',
     attendeeName: '',
   });
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { currentOrg, currentRole, currentStatus } = useWorkspace();
 
@@ -137,10 +138,18 @@ export default function RegistrationsPage() {
     return numMatch ? parseInt(numMatch[0], 10) : 1;
   };
 
-  // Handle delete execution
+  // Handle delete execution with optimistic feedback
   const handleDeleteConfirm = async () => {
     const { leadId, attendeeName } = deleteConfirm;
     if (!leadId) return;
+
+    setIsDeleting(true);
+    // Instant optimistic update: remove immediately so UI feels instantaneous
+    const previousRegistrations = registrations;
+    setRegistrations((prev) => prev.filter((r) => r.id !== leadId));
+    if (selectedReg?.id === leadId) {
+      setSelectedReg(null);
+    }
 
     try {
       const orgParam = currentOrg?.id ? `&orgId=${currentOrg.id}` : '';
@@ -149,18 +158,20 @@ export default function RegistrationsPage() {
 
       if (!json.success) {
         const supabase = createClient();
-        await supabase.from('leads').delete().eq('id', leadId);
+        const { error: clientDeleteErr } = await supabase.from('leads').delete().eq('id', leadId);
+        if (clientDeleteErr) {
+          throw new Error(json.error || clientDeleteErr.message);
+        }
       }
 
-      setRegistrations((prev) => prev.filter((r) => r.id !== leadId));
-      if (selectedReg?.id === leadId) {
-        setSelectedReg(null);
-      }
       toast.success(`Registration for "${attendeeName}" removed`);
+      setDeleteConfirm({ isOpen: false, leadId: '', attendeeName: '' });
     } catch (err: any) {
+      // Revert if error occurs
+      setRegistrations(previousRegistrations);
       toast.error(err.message || 'Error deleting registration');
     } finally {
-      setDeleteConfirm({ isOpen: false, leadId: '', attendeeName: '' });
+      setIsDeleting(false);
     }
   };
 
@@ -279,7 +290,7 @@ export default function RegistrationsPage() {
               className="flex-1 sm:flex-none inline-flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-medium transition-colors disabled:opacity-50 shadow-2xs"
             >
               <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
+              <span>{isLoading ? 'Refreshing...' : 'Refresh'}</span>
             </button>
           </div>
         </div>
@@ -905,6 +916,8 @@ export default function RegistrationsPage() {
           message={`Are you sure you want to delete the registration record for "${deleteConfirm.attendeeName}"?`}
           confirmText="Delete"
           variant="danger"
+          isLoading={isDeleting}
+          loadingText="Deleting..."
           onConfirm={handleDeleteConfirm}
           onCancel={() => setDeleteConfirm({ isOpen: false, leadId: '', attendeeName: '' })}
         />

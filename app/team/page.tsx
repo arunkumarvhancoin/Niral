@@ -30,6 +30,7 @@ import {
   Send,
   X,
   LogOut,
+  Loader2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -44,6 +45,7 @@ export default function TeamPage() {
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<MemberRole>('Employee');
+  const [isSubmittingInvite, setIsSubmittingInvite] = useState(false);
 
   const router = useRouter();
 
@@ -125,12 +127,16 @@ export default function TeamPage() {
       confirmText: 'Remove Member',
       variant: 'danger',
       action: async () => {
+        // Optimistic UI update: instantly remove from state so user sees zero delay
+        const prevMembers = members;
+        setMembers((prev) => prev.filter((m) => m.id !== memberId));
         try {
           await CRMService.removeMember(currentOrg.id, memberId);
           toast.success('Member removed');
           await loadTeamData();
-          await refreshWorkspace();
+          await refreshWorkspace(true);
         } catch (err: any) {
+          setMembers(prevMembers);
           toast.error(err.message || 'Failed to remove member');
         } finally {
           setConfirmState((prev) => ({ ...prev, isOpen: false }));
@@ -151,7 +157,7 @@ export default function TeamPage() {
         try {
           await CRMService.leaveOrganization(currentOrg.id, currentUser.id);
           toast.success(`Left ${currentOrg.name}`);
-          await refreshWorkspace();
+          await refreshWorkspace(true);
           router.push('/onboarding');
         } catch (err: any) {
           toast.error(err.message || 'Failed to leave organization');
@@ -164,7 +170,8 @@ export default function TeamPage() {
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentOrg || !currentUser || !inviteEmail.trim()) return;
+    if (!currentOrg || !currentUser || !inviteEmail.trim() || isSubmittingInvite) return;
+    setIsSubmittingInvite(true);
     try {
       const res = await CRMService.addMemberByEmail(currentOrg.id, inviteEmail, inviteRole, currentUser.id);
       if (res.addedDirectly) {
@@ -175,9 +182,11 @@ export default function TeamPage() {
       setIsInviteOpen(false);
       setInviteEmail('');
       await loadTeamData();
-      await refreshWorkspace();
+      await refreshWorkspace(true);
     } catch (err: any) {
       toast.error(err.message || 'Failed to add member');
+    } finally {
+      setIsSubmittingInvite(false);
     }
   };
 
@@ -519,10 +528,20 @@ export default function TeamPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-sm transition-colors flex items-center space-x-1.5"
+                    disabled={isSubmittingInvite}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-sm transition-all flex items-center space-x-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    <span>Add to Workspace</span>
+                    {isSubmittingInvite ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Adding...</span>
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>Add to Workspace</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -536,7 +555,7 @@ export default function TeamPage() {
           message={confirmState.message}
           confirmText={confirmState.confirmText}
           variant={confirmState.variant}
-          onConfirm={() => confirmState.action?.()}
+          onConfirm={confirmState.action}
           onCancel={() => setConfirmState((prev) => ({ ...prev, isOpen: false }))}
         />
       </div>
