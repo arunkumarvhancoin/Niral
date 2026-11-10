@@ -17,11 +17,17 @@ import {
   UserCheck,
   Building,
   LogOut,
+  X,
 } from 'lucide-react';
 import { useWorkspace } from '../providers/workspace-provider';
 import { hasPermission } from '../../lib/permissions';
 
-export function Sidebar() {
+interface SidebarProps {
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+}
+
+export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
   const { currentRole, currentStatus, currentUser, signOut } = useWorkspace();
 
@@ -38,12 +44,23 @@ export function Sidebar() {
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
 
-  return (
-    <aside className="w-64 border-r border-slate-200/80 bg-white flex flex-col h-screen sticky top-0 select-none flex-shrink-0 z-20">
+  const sidebarContent = (
+    <>
       {/* Niral Brand Header */}
-      <div className="flex items-center space-x-2.5 px-4 py-3.5 border-b border-slate-100">
-        <img src="/niral-icon.png" alt="Niral" className="w-8 h-8 object-contain flex-shrink-0" />
-        <img src="/niral-wordmark.png" alt="NIRAL" className="h-4 w-auto object-contain" />
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100">
+        <div className="flex items-center space-x-2.5">
+          <img src="/niral-icon.png" alt="Niral" className="w-8 h-8 object-contain flex-shrink-0" />
+          <img src="/niral-wordmark.png" alt="NIRAL" className="h-4 w-auto object-contain" />
+        </div>
+        {onMobileClose && (
+          <button
+            onClick={onMobileClose}
+            className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            aria-label="Close menu"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Workspace Switcher Header */}
@@ -59,7 +76,8 @@ export function Sidebar() {
             <Link
               key={item.name}
               href={item.href}
-              className={`flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              onClick={() => onMobileClose?.()}
+              className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                 isActive
                   ? 'bg-primary-50 text-primary-700 font-semibold shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
@@ -110,7 +128,33 @@ export function Sidebar() {
           </button>
         </div>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop Persistent Sidebar */}
+      <aside className="hidden md:flex w-64 border-r border-slate-200/80 bg-white flex-col h-screen sticky top-0 select-none flex-shrink-0 z-20">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile Drawer Backdrop */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-xs md:hidden animate-in fade-in duration-150"
+          onClick={onMobileClose}
+        />
+      )}
+
+      {/* Mobile Slide-over Drawer */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-white flex flex-col h-full select-none shadow-2xl transition-transform duration-200 ease-in-out md:hidden ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {sidebarContent}
+      </aside>
+    </>
   );
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useWorkspace } from '../providers/workspace-provider';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
@@ -10,6 +10,7 @@ import Link from 'next/link';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { currentOrg, currentRole, currentStatus, isLoading } = useWorkspace();
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Only show initial loading screen if we don't have an organization yet
   if (isLoading && !currentOrg) {
@@ -63,10 +64,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="h-screen flex bg-slate-50 overflow-hidden">
-      <Sidebar />
+      <Sidebar
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
+      />
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-y-auto p-6 lg:p-8">
+        <Header onOpenMobileSidebar={() => setMobileSidebarOpen(true)} />
+        <main className="flex-1 overflow-y-auto p-3.5 sm:p-6 lg:p-8">
           {children}
         </main>
       </div>

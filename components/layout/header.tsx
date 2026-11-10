@@ -12,10 +12,15 @@ import {
   HelpCircle,
   ChevronRight,
   Shield,
+  Menu,
 } from 'lucide-react';
 import Link from 'next/link';
 
-export function Header() {
+interface HeaderProps {
+  onOpenMobileSidebar?: () => void;
+}
+
+export function Header({ onOpenMobileSidebar }: HeaderProps) {
   const { currentUser, currentOrg, currentRole, currentStatus, signOut } = useWorkspace();
   const pathname = usePathname();
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -38,16 +43,27 @@ export function Header() {
   };
 
   return (
-    <header className="h-14 border-b border-slate-200/80 bg-white px-6 flex items-center justify-between z-30 flex-shrink-0">
-      {/* Breadcrumbs */}
-      <div className="flex items-center space-x-2 text-sm text-slate-500">
-        <span className="font-medium text-slate-900">{currentOrg?.name || 'Workspace'}</span>
-        {getBreadcrumbs().map((crumb, idx) => (
-          <React.Fragment key={crumb + idx}>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-slate-700 font-medium">{crumb}</span>
-          </React.Fragment>
-        ))}
+    <header className="h-14 border-b border-slate-200/80 bg-white px-3.5 sm:px-6 flex items-center justify-between z-30 flex-shrink-0">
+      {/* Left: Hamburger (mobile) + Breadcrumbs */}
+      <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
+        <button
+          type="button"
+          onClick={onOpenMobileSidebar}
+          className="md:hidden p-2 -ml-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors flex-shrink-0"
+          aria-label="Open sidebar"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
+        <div className="flex items-center space-x-1.5 sm:space-x-2 text-xs sm:text-sm text-slate-500 truncate">
+          <span className="font-semibold text-slate-900 truncate max-w-[110px] sm:max-w-xs">{currentOrg?.name || 'Workspace'}</span>
+          {getBreadcrumbs().map((crumb, idx) => (
+            <React.Fragment key={crumb + idx}>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+              <span className="text-slate-700 font-medium truncate">{crumb}</span>
+            </React.Fragment>
+          ))}
+        </div>
       </div>
 
       {/* Action items */}
