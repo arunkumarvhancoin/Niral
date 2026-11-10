@@ -39,7 +39,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
     { name: 'Leads', href: '/leads', icon: Target },
     { name: 'Registrations', href: '/registrations', icon: Ticket },
     { name: 'Deals', href: '/deals', icon: BarChart3 },
-    { name: 'Tasks & Feed', href: '/tasks', icon: CheckSquare },
+    { name: 'Tasks', href: '/tasks', icon: CheckSquare },
     ...(canViewTeam ? [{ name: 'Team', href: '/team', icon: UserCheck }] : []),
     { name: 'Settings', href: '/settings', icon: Settings },
   ];

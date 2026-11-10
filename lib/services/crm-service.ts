@@ -17,6 +17,20 @@ import {
   MemberStatus,
 } from '../types/crm';
 
+export interface DashboardRecentRegistration {
+  id: string;
+  title: string;
+  value: number;
+  status: string;
+  source: string;
+  created_at: string;
+  contact?: {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+  } | null;
+}
+
 export interface DashboardMetrics {
   totalContacts: number;
   totalLeads: number;
@@ -24,7 +38,8 @@ export interface DashboardMetrics {
   closedDeals: number;
   pipelineRevenue: number;
   wonRevenue: number;
-  recentActivities: Activity[];
+  recentActivities?: Activity[];
+  recentRegistrations?: DashboardRecentRegistration[];
   upcomingTasks: Task[];
   leadConversionRate: number;
 }
@@ -776,13 +791,13 @@ export const CRMService = {
       { data: leadsData },
       { data: dealsData },
       { data: tasksData },
-      { data: activitiesData },
+      { data: recentRegistrationsData },
     ] = await Promise.all([
       supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('organization_id', orgId),
       supabase.from('leads').select('id, status').eq('organization_id', orgId),
       supabase.from('deals').select('id, value, status').eq('organization_id', orgId),
       supabase.from('tasks').select('*').eq('organization_id', orgId).neq('status', 'completed').order('created_at', { ascending: false }).limit(5),
-      supabase.from('activities').select('*').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(5),
+      supabase.from('leads').select('id, title, value, status, source, created_at, contact:converted_contact_id(first_name, last_name, email)').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(5),
     ]);
 
     const leads = leadsData || [];
@@ -804,7 +819,8 @@ export const CRMService = {
       closedDeals: wonDeals.length,
       pipelineRevenue,
       wonRevenue,
-      recentActivities: (activitiesData || []) as Activity[],
+      recentActivities: [],
+      recentRegistrations: (recentRegistrationsData || []) as any,
       upcomingTasks: (tasksData || []) as Task[],
       leadConversionRate: conversionRate,
     };

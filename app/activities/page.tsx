@@ -7,7 +7,7 @@ export default function ActivitiesPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace('/tasks#feed');
+    router.replace('/tasks');
   }, [router]);
 
   return null;
