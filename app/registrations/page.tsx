@@ -32,7 +32,6 @@ interface RegistrationLead extends Lead {
 }
 
 export default function RegistrationsPage() {
-  const { currentOrg } = useWorkspace();
   const [registrations, setRegistrations] = useState<RegistrationLead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -58,22 +57,25 @@ export default function RegistrationsPage() {
     attendeeName: '',
   });
 
+  const { currentOrg, currentRole, currentStatus } = useWorkspace();
+
   const loadRegistrations = useCallback(async () => {
+    if (!currentOrg?.id) return;
     setIsLoading(true);
     try {
-      // 1. Fetch from server API endpoint (uses admin client, completely bypasses RLS)
-      const res = await fetch('/api/registrations');
+      // 1. Fetch strictly for active organization with user session check
+      const res = await fetch(`/api/registrations?orgId=${currentOrg.id}`);
       const json = await res.json();
 
       if (json.success && Array.isArray(json.registrations)) {
         setRegistrations(json.registrations as RegistrationLead[]);
       } else {
-        // Fallback to client Supabase if API is unavailable
+        // Fallback to client Supabase strictly filtered to active org (enforcing RLS)
         const supabase = createClient();
         const { data } = await supabase
           .from('leads')
           .select('*, contact:converted_contact_id(notes)')
-          .or('company.eq.Bharat Play,source.eq.Event,title.ilike.Bharat Play%')
+          .eq('organization_id', currentOrg.id)
           .order('created_at', { ascending: false });
 
         setRegistrations((data || []) as RegistrationLead[]);
@@ -81,21 +83,23 @@ export default function RegistrationsPage() {
     } catch (err: any) {
       console.warn('API /api/registrations fallback to direct Supabase:', err);
       try {
-        const supabase = createClient();
-        const { data } = await supabase
-          .from('leads')
-          .select('*, contact:converted_contact_id(notes)')
-          .or('company.eq.Bharat Play,source.eq.Event,title.ilike.Bharat Play%')
-          .order('created_at', { ascending: false });
+        if (currentOrg?.id) {
+          const supabase = createClient();
+          const { data } = await supabase
+            .from('leads')
+            .select('*, contact:converted_contact_id(notes)')
+            .eq('organization_id', currentOrg.id)
+            .order('created_at', { ascending: false });
 
-        setRegistrations((data || []) as RegistrationLead[]);
+          setRegistrations((data || []) as RegistrationLead[]);
+        }
       } catch (e) {
         toast.error('Failed to load registrations');
       }
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentOrg?.id]);
 
   useEffect(() => {
     loadRegistrations();
@@ -139,7 +143,8 @@ export default function RegistrationsPage() {
     if (!leadId) return;
 
     try {
-      const res = await fetch(`/api/registrations?id=${leadId}`, { method: 'DELETE' });
+      const orgParam = currentOrg?.id ? `&orgId=${currentOrg.id}` : '';
+      const res = await fetch(`/api/registrations?id=${leadId}${orgParam}`, { method: 'DELETE' });
       const json = await res.json();
 
       if (!json.success) {

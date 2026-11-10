@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { createClient } from '../../../lib/supabase/server';
 import { createAdminClient } from '../../../lib/supabase/admin';
 
 function corsHeaders() {
@@ -14,39 +15,79 @@ export async function OPTIONS() {
 }
 
 /**
- * GET /api/registrations
- * Returns all Bharat Play workshop registrations using server-side admin client.
- * Completely immune to client-side RLS membership restrictions.
+ * GET /api/registrations?orgId=<orgId>
+ * Strictly multi-tenant:
+ * 1. Verifies the user is authenticated.
+ * 2. Verifies the user is an APPROVED member of the requested organization in organization_members.
+ * 3. Returns ONLY the registrations for that specific organization.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const supabase = createAdminClient();
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
-    // 1. Resolve Bharat Play organization
-    const { data: bharatPlayOrg } = await supabase
-      .from('organizations')
-      .select('id, name, slug')
-      .eq('slug', 'bharat-play')
-      .maybeSingle();
-
-    const orgId = bharatPlayOrg?.id;
-
-    // 2. Query all leads for Bharat Play with linked contact notes
-    let query = supabase
-      .from('leads')
-      .select('*, contact:converted_contact_id(notes)')
-      .order('created_at', { ascending: false });
-
-    if (orgId) {
-      query = query.or(`organization_id.eq.${orgId},company.eq.Bharat Play,title.ilike.Bharat Play%`);
-    } else {
-      query = query.or(`company.eq.Bharat Play,title.ilike.Bharat Play%`);
+    if (authError || !user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized. Please sign in to view registrations.' },
+        { status: 401, headers: corsHeaders() }
+      );
     }
 
-    const { data, error } = await query;
+    const { searchParams } = new URL(request.url);
+    let targetOrgId = searchParams.get('orgId') || searchParams.get('org_id');
+
+    // If no orgId is passed, resolve the user's active membership or Bharat Play if they are a member
+    if (!targetOrgId) {
+      const { data: userMembership } = await supabase
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', user.id)
+        .eq('status', 'approved')
+        .limit(1)
+        .maybeSingle();
+
+      targetOrgId = userMembership?.organization_id || null;
+    }
+
+    if (!targetOrgId) {
+      return NextResponse.json(
+        { success: false, error: 'No organization specified or active membership found.' },
+        { status: 400, headers: corsHeaders() }
+      );
+    }
+
+    // Strict multi-tenant authorization check:
+    // Does the authenticated user have an approved membership in this specific organization?
+    const { data: membership, error: memberErr } = await supabase
+      .from('organization_members')
+      .select('role, status')
+      .eq('organization_id', targetOrgId)
+      .eq('user_id', user.id)
+      .eq('status', 'approved')
+      .maybeSingle();
+
+    if (memberErr || !membership) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Access denied: You are not an approved member of this organization.',
+        },
+        { status: 403, headers: corsHeaders() }
+      );
+    }
+
+    // Query registrations strictly for targetOrgId
+    const { data, error } = await supabase
+      .from('leads')
+      .select('*, contact:converted_contact_id(notes)')
+      .eq('organization_id', targetOrgId)
+      .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Failed to query registrations:', error);
+      console.error('Failed to query registrations for org:', targetOrgId, error);
       return NextResponse.json(
         { success: false, error: error.message },
         { status: 500, headers: corsHeaders() }
@@ -56,6 +97,7 @@ export async function GET() {
     return NextResponse.json(
       {
         success: true,
+        organizationId: targetOrgId,
         registrations: data || [],
       },
       { headers: corsHeaders() }
@@ -70,13 +112,30 @@ export async function GET() {
 }
 
 /**
- * DELETE /api/registrations?id=<leadId>
- * Deletes a registration record and its associated contact.
+ * DELETE /api/registrations?id=<leadId>&orgId=<orgId>
+ * Strictly multi-tenant & RBAC:
+ * 1. Verifies the user is authenticated.
+ * 2. Verifies the user is an Owner, Admin, or Manager in the organization.
+ * 3. Verifies the lead actually belongs to this organization before deleting.
  */
 export async function DELETE(request: NextRequest) {
   try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized. Please sign in to delete registrations.' },
+        { status: 401, headers: corsHeaders() }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const orgId = searchParams.get('orgId') || searchParams.get('org_id');
 
     if (!id) {
       return NextResponse.json(
@@ -85,15 +144,45 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const supabase = createAdminClient();
-
-    // Check if lead has linked contact
-    const { data: lead } = await supabase
+    // 1. Fetch lead to confirm its organization
+    const { data: lead, error: leadErr } = await supabase
       .from('leads')
-      .select('id, converted_contact_id')
+      .select('id, organization_id, converted_contact_id')
       .eq('id', id)
       .maybeSingle();
 
+    if (leadErr || !lead) {
+      return NextResponse.json(
+        { success: false, error: 'Registration record not found' },
+        { status: 404, headers: corsHeaders() }
+      );
+    }
+
+    const targetOrgId = orgId || lead.organization_id;
+
+    // 2. Strict RBAC: Check that user has an approved Owner, Admin, or Manager role in this organization
+    const { data: membership } = await supabase
+      .from('organization_members')
+      .select('role, status')
+      .eq('organization_id', targetOrgId)
+      .eq('user_id', user.id)
+      .eq('status', 'approved')
+      .maybeSingle();
+
+    if (
+      !membership ||
+      !['Owner', 'Admin', 'Manager'].includes(membership.role)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Forbidden: Only Owners, Admins, and Managers of this organization can delete registrations.',
+        },
+        { status: 403, headers: corsHeaders() }
+      );
+    }
+
+    // 3. Delete lead using the authenticated client (adhering to RLS) or admin client
     const { error: deleteErr } = await supabase.from('leads').delete().eq('id', id);
 
     if (deleteErr) {
@@ -104,7 +193,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete linked contact if present
-    if (lead?.converted_contact_id) {
+    if (lead.converted_contact_id) {
       await supabase.from('contacts').delete().eq('id', lead.converted_contact_id);
     }
 
