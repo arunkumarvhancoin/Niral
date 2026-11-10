@@ -6,6 +6,7 @@ import { useWorkspace } from '../../components/providers/workspace-provider';
 import { createClient } from '../../lib/supabase/client';
 import { Lead } from '../../lib/types/crm';
 import { toast } from '../../lib/stores/toast-store';
+import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import {
   Ticket,
   Search,
@@ -24,7 +25,11 @@ import {
   TrendingUp,
   Image as ImageIcon,
   CheckCircle2,
-  Filter,
+  Trash2,
+  Copy,
+  Check,
+  ChevronRight,
+  ZoomIn,
 } from 'lucide-react';
 
 interface RegistrationLead extends Lead {
@@ -40,20 +45,32 @@ export default function RegistrationsPage() {
   const [search, setSearch] = useState('');
   const [slotFilter, setSlotFilter] = useState('all');
 
-  // Modal for previewing attendee payment screenshot
-  const [viewingScreenshot, setViewingScreenshot] = useState<{
+  // Selected registration for the details box modal
+  const [selectedReg, setSelectedReg] = useState<RegistrationLead | null>(null);
+
+  // Modal for enlarged preview of payment screenshot
+  const [zoomedScreenshot, setZoomedScreenshot] = useState<string | null>(null);
+
+  // Copy indicator state
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Confirm delete dialog state
+  const [deleteConfirm, setDeleteConfirm] = useState<{
     isOpen: boolean;
-    imageUrl: string;
+    leadId: string;
     attendeeName: string;
-    amount: string;
-  } | null>(null);
+  }>({
+    isOpen: false,
+    leadId: '',
+    attendeeName: '',
+  });
 
   const loadRegistrations = useCallback(async () => {
     setIsLoading(true);
     try {
       const supabase = createClient();
 
-      // Query all registrations (collected leads for workshops/events) joined with contact notes for payment screenshots
+      // Query all registrations joined with contact notes for payment screenshots
       const { data, error } = await supabase
         .from('leads')
         .select('*, contact:converted_contact_id(notes)')
@@ -94,7 +111,7 @@ export default function RegistrationsPage() {
     };
   };
 
-  // Extract payment screenshot from joined contact notes
+  // Extract payment screenshot from contact notes
   const extractScreenshotUrl = (reg: RegistrationLead): string | null => {
     const notes = reg.contact?.notes || '';
     const match = notes.match(/• Payment Screenshot:\s*(.+)/);
@@ -109,6 +126,49 @@ export default function RegistrationsPage() {
     const { members } = parseLeadDetails(title);
     const numMatch = members.match(/\d+/);
     return numMatch ? parseInt(numMatch[0], 10) : 1;
+  };
+
+  // Handle delete execution
+  const handleDeleteConfirm = async () => {
+    const { leadId, attendeeName } = deleteConfirm;
+    if (!leadId) return;
+
+    try {
+      const supabase = createClient();
+
+      // Find if there is a linked contact to clean up
+      const target = registrations.find((r) => r.id === leadId);
+
+      const { error: leadErr } = await supabase.from('leads').delete().eq('id', leadId);
+      if (leadErr) {
+        toast.error('Failed to delete lead: ' + leadErr.message);
+        return;
+      }
+
+      if (target?.converted_contact_id) {
+        await supabase.from('contacts').delete().eq('id', target.converted_contact_id);
+      }
+
+      setRegistrations((prev) => prev.filter((r) => r.id !== leadId));
+      if (selectedReg?.id === leadId) {
+        setSelectedReg(null);
+      }
+      toast.success(`Registration for "${attendeeName}" deleted successfully`);
+    } catch (err: any) {
+      toast.error(err.message || 'Error deleting registration');
+    } finally {
+      setDeleteConfirm({ isOpen: false, leadId: '', attendeeName: '' });
+    }
+  };
+
+  // Copy helper
+  const handleCopy = (text: string, fieldKey: string) => {
+    if (typeof window !== 'undefined') {
+      navigator.clipboard.writeText(text);
+      setCopiedField(fieldKey);
+      toast.success(`Copied ${text}`);
+      setTimeout(() => setCopiedField(null), 2000);
+    }
   };
 
   // Export to CSV
@@ -210,7 +270,7 @@ export default function RegistrationsPage() {
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                Collection of registration data, slot reservations, and payment records.
+                Click on any registration to inspect full attendee details and payment screenshot.
               </p>
             </div>
           </div>
@@ -315,7 +375,7 @@ export default function RegistrationsPage() {
                   <th className="py-3 px-4">Total Payable (₹)</th>
                   <th className="py-3 px-4">Payment Proof</th>
                   <th className="py-3 px-4">Date & Time</th>
-                  <th className="py-3 px-4 text-right">Reach Out</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -354,29 +414,33 @@ export default function RegistrationsPage() {
                     const whatsappLink = cleanPhone ? `https://wa.me/91${cleanPhone}?text=${whatsappMsg}` : null;
 
                     return (
-                      <tr key={reg.id} className="hover:bg-slate-50/70 transition-colors">
+                      <tr
+                        key={reg.id}
+                        onClick={() => setSelectedReg(reg)}
+                        className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                      >
                         {/* Attendee Name */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center space-x-2.5">
                             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#0C2444] to-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
                               {attendeeName[0]?.toUpperCase() || 'A'}
                             </div>
-                            <span className="font-semibold text-slate-900 leading-snug">
-                              {attendeeName}
-                            </span>
+                            <div>
+                              <span className="font-semibold text-slate-900 leading-snug group-hover:text-indigo-600 transition-colors">
+                                {attendeeName}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block">Click to view details</span>
+                            </div>
                           </div>
                         </td>
 
                         {/* Email ID */}
                         <td className="py-3.5 px-4 text-slate-600">
                           {reg.email ? (
-                            <a
-                              href={`mailto:${reg.email}`}
-                              className="inline-flex items-center space-x-1 text-slate-700 hover:text-indigo-600 transition-colors"
-                            >
+                            <span className="inline-flex items-center space-x-1 text-slate-700">
                               <Mail className="w-3 h-3 text-slate-400 shrink-0" />
-                              <span>{reg.email}</span>
-                            </a>
+                              <span className="truncate max-w-[150px]">{reg.email}</span>
+                            </span>
                           ) : (
                             <span className="text-slate-400 italic">Not provided</span>
                           )}
@@ -385,13 +449,10 @@ export default function RegistrationsPage() {
                         {/* Phone Number */}
                         <td className="py-3.5 px-4 text-slate-600 font-mono">
                           {reg.phone ? (
-                            <a
-                              href={`tel:${reg.phone}`}
-                              className="inline-flex items-center space-x-1 text-slate-700 hover:text-indigo-600 transition-colors"
-                            >
+                            <span className="inline-flex items-center space-x-1 text-slate-700">
                               <Phone className="w-3 h-3 text-slate-400 shrink-0" />
                               <span>{reg.phone}</span>
-                            </a>
+                            </span>
                           ) : (
                             <span className="text-slate-400 italic">Not provided</span>
                           )}
@@ -399,7 +460,7 @@ export default function RegistrationsPage() {
 
                         {/* Number of Members */}
                         <td className="py-3.5 px-4">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
                             <Users className="w-3 h-3 mr-1 text-indigo-500" />
                             {members}
                           </span>
@@ -422,14 +483,10 @@ export default function RegistrationsPage() {
                         <td className="py-3.5 px-4">
                           {screenshotUrl ? (
                             <button
-                              onClick={() =>
-                                setViewingScreenshot({
-                                  isOpen: true,
-                                  imageUrl: screenshotUrl,
-                                  attendeeName,
-                                  amount: `₹${Number(reg.value || 649).toLocaleString('en-IN')}`,
-                                })
-                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setZoomedScreenshot(screenshotUrl);
+                              }}
                               className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold text-[11px] transition-colors shadow-2xs"
                             >
                               <ImageIcon className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -452,7 +509,7 @@ export default function RegistrationsPage() {
                           })}
                         </td>
 
-                        {/* Contact Actions (Read-Only reach out links) */}
+                        {/* Actions */}
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end space-x-1.5">
                             {whatsappLink && (
@@ -461,20 +518,26 @@ export default function RegistrationsPage() {
                                 target="_blank"
                                 rel="noreferrer"
                                 title="Message attendee on WhatsApp"
+                                onClick={(e) => e.stopPropagation()}
                                 className="w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center justify-center transition-colors"
                               >
                                 <MessageSquare className="w-3.5 h-3.5" />
                               </a>
                             )}
-                            {reg.phone && (
-                              <a
-                                href={`tel:${reg.phone}`}
-                                title="Call attendee"
-                                className="w-7 h-7 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center transition-colors"
-                              >
-                                <Phone className="w-3.5 h-3.5" />
-                              </a>
-                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteConfirm({
+                                  isOpen: true,
+                                  leadId: reg.id,
+                                  attendeeName,
+                                });
+                              }}
+                              title="Delete registration"
+                              className="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 flex items-center justify-center transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -486,54 +549,296 @@ export default function RegistrationsPage() {
           </div>
         </div>
 
-        {/* Payment Screenshot Preview Modal */}
-        {viewingScreenshot?.isOpen && (
+        {/* =================================================================== */}
+        {/* DETAILS BOX MODAL: Displays all submitted registration information */}
+        {/* =================================================================== */}
+        {selectedReg && (() => {
+          const { members, slot } = parseLeadDetails(selectedReg.title);
+          const cleanPhone = (selectedReg.phone || '').replace(/[^0-9]/g, '');
+          const attendeeName =
+            `${selectedReg.first_name || ''} ${selectedReg.last_name || ''}`.trim() ||
+            selectedReg.title.split('(')[0]?.replace('Bharat Play:', '').trim() ||
+            'Guest';
+
+          const screenshotUrl = extractScreenshotUrl(selectedReg);
+          const whatsappMsg = encodeURIComponent(
+            `Hi ${attendeeName}! Confirming your Bharat Play registration for ${members} (${slot}). Looking forward to seeing you!`
+          );
+          const whatsappUrl = cleanPhone ? `https://wa.me/91${cleanPhone}?text=${whatsappMsg}` : null;
+
+          return (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150"
+              onClick={() => setSelectedReg(null)}
+            >
+              <div
+                className="bg-white rounded-2xl shadow-2xl border border-slate-200/90 max-w-lg w-full max-h-[92vh] overflow-y-auto animate-in zoom-in-95 duration-150"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="p-4 sm:p-5 border-b border-slate-100 bg-gradient-to-r from-[#0C2444] to-[#15345d] text-white flex items-center justify-between rounded-t-2xl">
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                      {attendeeName[0]?.toUpperCase() || 'A'}
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-base font-bold text-white truncate leading-tight">
+                        {attendeeName}
+                      </h3>
+                      <p className="text-[11px] text-sky-200 mt-0.5">
+                        Registered: {new Date(selectedReg.created_at).toLocaleString('en-IN', {
+                          timeZone: 'Asia/Kolkata',
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedReg(null)}
+                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors shrink-0"
+                    aria-label="Close"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Body Details */}
+                <div className="p-4 sm:p-6 space-y-4 text-xs">
+                  {/* Contact Information Card */}
+                  <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/80 space-y-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Attendee Contact Details
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {/* Email */}
+                      <div className="bg-white p-2.5 rounded-lg border border-slate-200/70 flex items-center justify-between">
+                        <div className="min-w-0 pr-2">
+                          <span className="text-[10px] text-slate-400 block font-medium">Email Address</span>
+                          <span className="font-semibold text-slate-800 truncate block">
+                            {selectedReg.email || 'None provided'}
+                          </span>
+                        </div>
+                        {selectedReg.email && (
+                          <button
+                            onClick={() => handleCopy(selectedReg.email!, 'email')}
+                            title="Copy email"
+                            className="p-1 text-slate-400 hover:text-slate-700 rounded transition-colors shrink-0"
+                          >
+                            {copiedField === 'email' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Phone */}
+                      <div className="bg-white p-2.5 rounded-lg border border-slate-200/70 flex items-center justify-between">
+                        <div className="min-w-0 pr-2">
+                          <span className="text-[10px] text-slate-400 block font-medium">Phone Number</span>
+                          <span className="font-semibold text-slate-800 font-mono truncate block">
+                            {selectedReg.phone || 'None provided'}
+                          </span>
+                        </div>
+                        {selectedReg.phone && (
+                          <button
+                            onClick={() => handleCopy(selectedReg.phone!, 'phone')}
+                            title="Copy phone"
+                            className="p-1 text-slate-400 hover:text-slate-700 rounded transition-colors shrink-0"
+                          >
+                            {copiedField === 'phone' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Direct Reach Out Buttons */}
+                    <div className="flex items-center gap-2 pt-1">
+                      {whatsappUrl && (
+                        <a
+                          href={whatsappUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 inline-flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors text-xs shadow-xs"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>Chat on WhatsApp</span>
+                        </a>
+                      )}
+                      {selectedReg.phone && (
+                        <a
+                          href={`tel:${selectedReg.phone}`}
+                          className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold transition-colors text-xs shadow-xs"
+                        >
+                          <Phone className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Call</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Reservation Details Card */}
+                  <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/80 space-y-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Booking Information
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div className="bg-white p-2.5 rounded-lg border border-slate-200/70">
+                        <span className="text-[10px] text-slate-400 block font-medium">Number of Members</span>
+                        <span className="font-bold text-slate-900 text-sm mt-0.5 flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>{members}</span>
+                        </span>
+                      </div>
+
+                      <div className="bg-white p-2.5 rounded-lg border border-slate-200/70">
+                        <span className="text-[10px] text-slate-400 block font-medium">Chosen Time Slot</span>
+                        <span className="font-bold text-slate-900 text-xs mt-0.5 flex items-center gap-1 truncate">
+                          <Clock className="w-3.5 h-3.5 text-sky-600" />
+                          <span>{slot}</span>
+                        </span>
+                      </div>
+
+                      <div className="bg-white p-2.5 rounded-lg border border-slate-200/70">
+                        <span className="text-[10px] text-slate-400 block font-medium">Total Payable (INR)</span>
+                        <span className="font-bold text-emerald-700 text-base mt-0.5 block">
+                          ₹{Number(selectedReg.value || 649).toLocaleString('en-IN')}
+                        </span>
+                      </div>
+
+                      <div className="bg-white p-2.5 rounded-lg border border-slate-200/70">
+                        <span className="text-[10px] text-slate-400 block font-medium">Registration Status</span>
+                        <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-300 mt-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          <span>Confirmed</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payment Proof Screenshot Section */}
+                  <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/80 space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                      <span>Payment Proof Screenshot</span>
+                      {screenshotUrl && (
+                        <span className="text-emerald-700 font-semibold normal-case">
+                          Screenshot Attached
+                        </span>
+                      )}
+                    </p>
+
+                    {screenshotUrl ? (
+                      <div className="space-y-2">
+                        <div
+                          onClick={() => setZoomedScreenshot(screenshotUrl)}
+                          className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-900 cursor-zoom-in max-h-56 flex items-center justify-center"
+                        >
+                          <img
+                            src={screenshotUrl}
+                            alt="Payment receipt proof"
+                            className="max-h-56 w-auto object-contain"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <span className="px-3 py-1.5 rounded-full bg-white text-slate-900 font-bold text-xs flex items-center gap-1 shadow-md">
+                              <ZoomIn className="w-3.5 h-3.5 text-slate-700" />
+                              <span>Click to enlarge</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="text-[10px] text-slate-500">
+                            Verified UPI / Bank Receipt
+                          </span>
+                          <a
+                            href={screenshotUrl}
+                            download={`receipt-${attendeeName.toLowerCase().replace(/\s+/g, '-')}.jpg`}
+                            className="inline-flex items-center space-x-1 text-xs text-indigo-600 hover:text-indigo-800 font-semibold transition-colors"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Download Receipt</span>
+                          </a>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-lg bg-white border border-slate-200/70 text-center text-slate-400">
+                        <ImageIcon className="w-6 h-6 text-slate-300 mx-auto mb-1" />
+                        <p className="text-[11px] font-medium text-slate-600">No Payment Screenshot Uploaded</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">The attendee completed reservation without attaching an image.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer with Delete Button */}
+                <div className="p-4 sm:p-5 border-t border-slate-200/80 bg-slate-50 flex items-center justify-between rounded-b-2xl">
+                  <span className="text-[11px] text-slate-400 font-mono">ID: {selectedReg.id.slice(0, 8)}...</span>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDeleteConfirm({
+                          isOpen: true,
+                          leadId: selectedReg.id,
+                          attendeeName,
+                        })
+                      }
+                      className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Delete Registration</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedReg(null)}
+                      className="px-3.5 py-2 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Zoomed Screenshot Fullscreen Lightbox */}
+        {zoomedScreenshot && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75 backdrop-blur-sm animate-in fade-in duration-150"
-            onClick={() => setViewingScreenshot(null)}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150"
+            onClick={() => setZoomedScreenshot(null)}
           >
             <div
-              className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150"
+              className="relative max-w-2xl max-h-[90vh] w-auto flex flex-col items-center"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm">Payment Proof Screenshot</h3>
-                  <p className="text-xs text-slate-500">
-                    {viewingScreenshot.attendeeName} &bull; {viewingScreenshot.amount}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setViewingScreenshot(null)}
-                  className="w-8 h-8 rounded-full bg-slate-200/60 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors"
-                  aria-label="Close"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="p-4 bg-slate-950 flex items-center justify-center min-h-[300px] max-h-[70vh] overflow-auto">
-                <img
-                  src={viewingScreenshot.imageUrl}
-                  alt={`Payment proof for ${viewingScreenshot.attendeeName}`}
-                  className="max-h-[66vh] max-w-full object-contain rounded-lg shadow-md"
-                />
-              </div>
-
-              <div className="px-5 py-3 border-t border-slate-100 bg-white flex items-center justify-between text-xs text-slate-500">
-                <span>Verified Payment Confirmation</span>
-                <a
-                  href={viewingScreenshot.imageUrl}
-                  download={`payment-${viewingScreenshot.attendeeName.toLowerCase().replace(/\s+/g, '-')}.jpg`}
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download Image</span>
-                </a>
-              </div>
+              <button
+                onClick={() => setZoomedScreenshot(null)}
+                className="absolute -top-11 right-0 text-white/80 hover:text-white p-1 text-sm font-semibold flex items-center gap-1"
+              >
+                <span>Close</span>
+                <X className="w-5 h-5" />
+              </button>
+              <img
+                src={zoomedScreenshot}
+                alt="Enlarged payment screenshot"
+                className="max-h-[85vh] max-w-full object-contain rounded-xl shadow-2xl border-2 border-white/20 bg-slate-950"
+              />
             </div>
           </div>
         )}
+
+        {/* Confirmation Dialog for Delete */}
+        <ConfirmDialog
+          isOpen={deleteConfirm.isOpen}
+          title="Delete Registration"
+          message={`Are you sure you want to permanently delete the registration record for "${deleteConfirm.attendeeName}"? This action cannot be undone.`}
+          confirmText="Delete Registration"
+          variant="danger"
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setDeleteConfirm({ isOpen: false, leadId: '', attendeeName: '' })}
+        />
       </div>
     </AppShell>
   );
