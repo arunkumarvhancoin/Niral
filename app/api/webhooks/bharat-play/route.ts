@@ -173,54 +173,10 @@ export async function POST(request: NextRequest) {
 
     const leadTitle = `Bharat Play: ${fullName || firstName} (${members} · ${slot})`;
 
-    // 5. Insert Lead strictly into Bharat Play Organization
-    let leadRecord: any = null;
-    const { data: lead, error: leadError } = await supabase
-      .from('leads')
-      .insert({
-        organization_id: targetOrgId,
-        title: leadTitle,
-        first_name: firstName,
-        last_name: lastName,
-        email: email || null,
-        phone: phone || null,
-        company: 'Bharat Play',
-        source: 'Event',
-        status: 'New',
-        priority: 'High',
-        value: numericValue,
-      })
-      .select()
-      .maybeSingle();
+    const contactId = crypto.randomUUID();
+    const leadId = crypto.randomUUID();
 
-    if (leadError) {
-      // If .select() fails due to SELECT RLS policy on anon key, perform direct insert
-      const { error: directInsertErr } = await supabase.from('leads').insert({
-        organization_id: targetOrgId,
-        title: leadTitle,
-        first_name: firstName,
-        last_name: lastName,
-        email: email || null,
-        phone: phone || null,
-        company: 'Bharat Play',
-        source: 'Event',
-        status: 'New',
-        priority: 'High',
-        value: numericValue,
-      });
-
-      if (directInsertErr) {
-        console.error('Failed to insert Bharat Play lead:', directInsertErr);
-        return NextResponse.json(
-          { success: false, error: directInsertErr.message },
-          { status: 500, headers: corsHeaders() }
-        );
-      }
-    } else {
-      leadRecord = lead;
-    }
-
-    // 6. Create permanent Customer Contact record in Bharat Play Organization
+    // 5. Create permanent Customer Contact record in Bharat Play Organization
     const registrationNotes = [
       `Bharat Play Reservation Details:`,
       `• Members/Group Size: ${members}`,
@@ -234,43 +190,41 @@ export async function POST(request: NextRequest) {
       .filter(Boolean)
       .join('\n');
 
-    let contactRecord: any = null;
-    const { data: contact, error: contactError } = await supabase
-      .from('contacts')
-      .insert({
-        organization_id: targetOrgId,
-        first_name: firstName,
-        last_name: lastName || '-',
-        email: email || null,
-        phone: phone || null,
-        company_name: 'Bharat Play',
-        status: 'customer',
-        notes: registrationNotes,
-      })
-      .select()
-      .maybeSingle();
+    await supabase.from('contacts').insert({
+      id: contactId,
+      organization_id: targetOrgId,
+      first_name: firstName,
+      last_name: lastName || '-',
+      email: email || null,
+      phone: phone || null,
+      company_name: 'Bharat Play',
+      status: 'customer',
+      notes: registrationNotes,
+    });
 
-    if (contactError) {
-      await supabase.from('contacts').insert({
-        organization_id: targetOrgId,
-        first_name: firstName,
-        last_name: lastName || '-',
-        email: email || null,
-        phone: phone || null,
-        company_name: 'Bharat Play',
-        status: 'customer',
-        notes: registrationNotes,
-      });
-    } else {
-      contactRecord = contact;
-    }
+    // 6. Insert Lead strictly into Bharat Play Organization linked to the contact
+    const { error: leadError } = await supabase.from('leads').insert({
+      id: leadId,
+      organization_id: targetOrgId,
+      title: leadTitle,
+      first_name: firstName,
+      last_name: lastName,
+      email: email || null,
+      phone: phone || null,
+      company: 'Bharat Play',
+      source: 'Event',
+      status: 'New',
+      priority: 'High',
+      value: numericValue,
+      converted_contact_id: contactId,
+    });
 
-    // Link contact to lead if both records available
-    if (contactRecord && leadRecord) {
-      await supabase
-        .from('leads')
-        .update({ converted_contact_id: contactRecord.id })
-        .eq('id', leadRecord.id);
+    if (leadError) {
+      console.error('Failed to insert Bharat Play lead:', leadError);
+      return NextResponse.json(
+        { success: false, error: leadError.message },
+        { status: 500, headers: corsHeaders() }
+      );
     }
 
     // 7. Log Activity in Bharat Play Activity Feed
@@ -278,9 +232,9 @@ export async function POST(request: NextRequest) {
       organization_id: targetOrgId,
       type: 'note',
       title: `Event Booking: ${fullName || firstName}`,
-      description: `Registered for Bharat Play. ${members} in group. Slot: ${slot}. Total Paid: ₹${numericValue}.`,
-      related_type: leadRecord ? 'lead' : null,
-      related_id: leadRecord?.id || null,
+      description: `Registered for Bharat Play. ${members} in group. Slot: ${slot}. Total Paid: ₹${numericValue}.${screenshotUrl ? ' Payment Screenshot Attached.' : ''}`,
+      related_type: 'lead',
+      related_id: leadId,
     });
 
     return NextResponse.json(
@@ -293,12 +247,12 @@ export async function POST(request: NextRequest) {
           slug: bharatPlayOrg.slug,
         },
         lead: {
+          id: leadId,
           title: leadTitle,
           status: 'New',
           value: numericValue,
-          id: leadRecord?.id || null,
         },
-        contactId: contactRecord?.id || null,
+        contactId,
       },
       { status: 201, headers: corsHeaders() }
     );

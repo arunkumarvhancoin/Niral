@@ -17,35 +17,46 @@ import {
   MessageSquare,
   Download,
   RefreshCw,
-  Copy,
-  Check,
+  Eye,
+  X,
   ExternalLink,
   DollarSign,
   TrendingUp,
+  Image as ImageIcon,
   CheckCircle2,
   Filter,
-  Sparkles,
 } from 'lucide-react';
 
-const WEBHOOK_URL = 'https://niral-crm.vercel.app/api/webhooks/bharat-play';
+interface RegistrationLead extends Lead {
+  contact?: {
+    notes?: string | null;
+  } | null;
+}
 
 export default function RegistrationsPage() {
   const { currentOrg } = useWorkspace();
-  const [registrations, setRegistrations] = useState<Lead[]>([]);
+  const [registrations, setRegistrations] = useState<RegistrationLead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [slotFilter, setSlotFilter] = useState('all');
-  const [copiedUrl, setCopiedUrl] = useState(false);
+
+  // Modal for previewing attendee payment screenshot
+  const [viewingScreenshot, setViewingScreenshot] = useState<{
+    isOpen: boolean;
+    imageUrl: string;
+    attendeeName: string;
+    amount: string;
+  } | null>(null);
 
   const loadRegistrations = useCallback(async () => {
     setIsLoading(true);
     try {
       const supabase = createClient();
 
-      // Query all registrations (collected leads for workshops/events)
+      // Query all registrations (collected leads for workshops/events) joined with contact notes for payment screenshots
       const { data, error } = await supabase
         .from('leads')
-        .select('*')
+        .select('*, contact:converted_contact_id(notes)')
         .or('company.eq.Bharat Play,source.eq.Event,title.ilike.Bharat Play%')
         .order('created_at', { ascending: false });
 
@@ -53,7 +64,7 @@ export default function RegistrationsPage() {
         console.error('Error fetching registrations:', error);
         toast.error('Failed to load registrations');
       } else {
-        setRegistrations((data || []) as Lead[]);
+        setRegistrations((data || []) as RegistrationLead[]);
       }
     } catch (err: any) {
       console.error(err);
@@ -83,21 +94,21 @@ export default function RegistrationsPage() {
     };
   };
 
+  // Extract payment screenshot from joined contact notes
+  const extractScreenshotUrl = (reg: RegistrationLead): string | null => {
+    const notes = reg.contact?.notes || '';
+    const match = notes.match(/• Payment Screenshot:\s*(.+)/);
+    if (match && match[1]?.trim()) {
+      return match[1].trim();
+    }
+    return null;
+  };
+
   // Helper to extract headcount number
   const extractHeadcount = (title: string): number => {
     const { members } = parseLeadDetails(title);
     const numMatch = members.match(/\d+/);
     return numMatch ? parseInt(numMatch[0], 10) : 1;
-  };
-
-  // Copy webhook URL
-  const handleCopyWebhookUrl = () => {
-    if (typeof window !== 'undefined') {
-      navigator.clipboard.writeText(WEBHOOK_URL);
-      setCopiedUrl(true);
-      toast.success('Webhook endpoint URL copied to clipboard');
-      setTimeout(() => setCopiedUrl(false), 2200);
-    }
   };
 
   // Export to CSV
@@ -115,12 +126,14 @@ export default function RegistrationsPage() {
       'Number of Members',
       'Chosen Slot',
       'Total Payable (INR)',
+      'Payment Screenshot Attached',
       'Date & Time Registered (IST)',
     ];
 
     const rows = filteredRegistrations.map((reg) => {
       const { members, slot } = parseLeadDetails(reg.title);
       const name = `${reg.first_name || ''} ${reg.last_name || ''}`.trim() || reg.title;
+      const hasScreenshot = extractScreenshotUrl(reg) ? 'Yes' : 'No';
       return [
         `"${reg.id}"`,
         `"${name.replace(/"/g, '""')}"`,
@@ -129,6 +142,7 @@ export default function RegistrationsPage() {
         `"${members.replace(/"/g, '""')}"`,
         `"${slot.replace(/"/g, '""')}"`,
         `"₹${(reg.value || 649).toLocaleString('en-IN')}"`,
+        `"${hasScreenshot}"`,
         `"${new Date(reg.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}"`,
       ].join(',');
     });
@@ -171,7 +185,7 @@ export default function RegistrationsPage() {
     return matchesSearch && matchesSlot;
   });
 
-  // KPI Calculations
+  // KPI Calculations in INR
   const totalRegistrations = registrations.length;
   const totalAttendees = registrations.reduce((sum, r) => sum + extractHeadcount(r.title), 0);
   const totalPayableRupees = registrations.reduce((sum, r) => sum + (Number(r.value) || 0), 0);
@@ -196,7 +210,7 @@ export default function RegistrationsPage() {
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                Collection of registration data, slot reservations, and attendee records.
+                Collection of registration data, slot reservations, and payment records.
               </p>
             </div>
           </div>
@@ -217,42 +231,6 @@ export default function RegistrationsPage() {
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
               <span>Refresh</span>
             </button>
-          </div>
-        </div>
-
-        {/* Live Ingestion Source Card */}
-        <div className="bg-gradient-to-r from-[#0C2444] via-[#122e54] to-[#1a3f72] text-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-800">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center space-x-2">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-sky-300 bg-white/10 px-2 py-0.5 rounded">
-                  Connected Source
-                </span>
-                <span className="text-xs text-sky-100 font-medium">Automatic ingestion from registration forms</span>
-              </div>
-              <p className="text-xs font-mono text-sky-200 bg-black/30 px-3 py-1.5 rounded-lg inline-block border border-white/10 break-all select-all">
-                {WEBHOOK_URL}
-              </p>
-            </div>
-
-            <div className="flex items-center space-x-2 shrink-0">
-              <button
-                onClick={handleCopyWebhookUrl}
-                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium border border-white/15 transition-colors"
-              >
-                {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedUrl ? 'Copied' : 'Copy Endpoint'}</span>
-              </button>
-              <a
-                href="https://bharatplay.com"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium border border-white/15 transition-colors"
-              >
-                <span>Visit Form</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            </div>
           </div>
         </div>
 
@@ -295,7 +273,7 @@ export default function RegistrationsPage() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Search by full name, email, phone, slot..."
+              placeholder="Search by attendee name, email, phone, slot..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/60 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors"
@@ -335,21 +313,22 @@ export default function RegistrationsPage() {
                   <th className="py-3 px-4">Members</th>
                   <th className="py-3 px-4">Chosen Slot</th>
                   <th className="py-3 px-4">Total Payable (₹)</th>
-                  <th className="py-3 px-4">Registered Date & Time</th>
+                  <th className="py-3 px-4">Payment Proof</th>
+                  <th className="py-3 px-4">Date & Time</th>
                   <th className="py-3 px-4 text-right">Reach Out</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400">
+                    <td colSpan={9} className="py-12 text-center text-slate-400">
                       <RefreshCw className="w-5 h-5 mx-auto mb-2 animate-spin text-slate-400" />
                       Loading registrations...
                     </td>
                   </tr>
                 ) : filteredRegistrations.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center">
+                    <td colSpan={9} className="py-12 text-center">
                       <Ticket className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                       <p className="text-sm font-medium text-slate-700">No registrations found</p>
                       <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
@@ -365,6 +344,8 @@ export default function RegistrationsPage() {
                       `${reg.first_name || ''} ${reg.last_name || ''}`.trim() ||
                       reg.title.split('(')[0]?.replace('Bharat Play:', '').trim() ||
                       'Guest';
+
+                    const screenshotUrl = extractScreenshotUrl(reg);
 
                     // Direct WhatsApp greeting
                     const whatsappMsg = encodeURIComponent(
@@ -437,6 +418,28 @@ export default function RegistrationsPage() {
                           ₹{Number(reg.value || 649).toLocaleString('en-IN')}
                         </td>
 
+                        {/* Payment Proof / Screenshot */}
+                        <td className="py-3.5 px-4">
+                          {screenshotUrl ? (
+                            <button
+                              onClick={() =>
+                                setViewingScreenshot({
+                                  isOpen: true,
+                                  imageUrl: screenshotUrl,
+                                  attendeeName,
+                                  amount: `₹${Number(reg.value || 649).toLocaleString('en-IN')}`,
+                                })
+                              }
+                              className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold text-[11px] transition-colors shadow-2xs"
+                            >
+                              <ImageIcon className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>View Receipt</span>
+                            </button>
+                          ) : (
+                            <span className="text-slate-400 text-[11px] italic">Not attached</span>
+                          )}
+                        </td>
+
                         {/* Date Registered */}
                         <td className="py-3.5 px-4 text-slate-500 text-[11px] whitespace-nowrap font-medium">
                           {new Date(reg.created_at).toLocaleString('en-IN', {
@@ -482,6 +485,55 @@ export default function RegistrationsPage() {
             </table>
           </div>
         </div>
+
+        {/* Payment Screenshot Preview Modal */}
+        {viewingScreenshot?.isOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75 backdrop-blur-sm animate-in fade-in duration-150"
+            onClick={() => setViewingScreenshot(null)}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Payment Proof Screenshot</h3>
+                  <p className="text-xs text-slate-500">
+                    {viewingScreenshot.attendeeName} &bull; {viewingScreenshot.amount}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setViewingScreenshot(null)}
+                  className="w-8 h-8 rounded-full bg-slate-200/60 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-4 bg-slate-950 flex items-center justify-center min-h-[300px] max-h-[70vh] overflow-auto">
+                <img
+                  src={viewingScreenshot.imageUrl}
+                  alt={`Payment proof for ${viewingScreenshot.attendeeName}`}
+                  className="max-h-[66vh] max-w-full object-contain rounded-lg shadow-md"
+                />
+              </div>
+
+              <div className="px-5 py-3 border-t border-slate-100 bg-white flex items-center justify-between text-xs text-slate-500">
+                <span>Verified Payment Confirmation</span>
+                <a
+                  href={viewingScreenshot.imageUrl}
+                  download={`payment-${viewingScreenshot.attendeeName.toLowerCase().replace(/\s+/g, '-')}.jpg`}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Image</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AppShell>
   );
