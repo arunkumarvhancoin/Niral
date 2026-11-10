@@ -174,6 +174,7 @@ export async function POST(request: NextRequest) {
     const leadTitle = `Bharat Play: ${fullName || firstName} (${members} · ${slot})`;
 
     // 5. Insert Lead strictly into Bharat Play Organization
+    let leadRecord: any = null;
     const { data: lead, error: leadError } = await supabase
       .from('leads')
       .insert({
@@ -190,14 +191,33 @@ export async function POST(request: NextRequest) {
         value: numericValue,
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (leadError) {
-      console.error('Failed to insert Bharat Play lead:', leadError);
-      return NextResponse.json(
-        { success: false, error: leadError.message },
-        { status: 500, headers: corsHeaders() }
-      );
+      // If .select() fails due to SELECT RLS policy on anon key, perform direct insert
+      const { error: directInsertErr } = await supabase.from('leads').insert({
+        organization_id: targetOrgId,
+        title: leadTitle,
+        first_name: firstName,
+        last_name: lastName,
+        email: email || null,
+        phone: phone || null,
+        company: 'Bharat Play',
+        source: 'Event',
+        status: 'New',
+        priority: 'High',
+        value: numericValue,
+      });
+
+      if (directInsertErr) {
+        console.error('Failed to insert Bharat Play lead:', directInsertErr);
+        return NextResponse.json(
+          { success: false, error: directInsertErr.message },
+          { status: 500, headers: corsHeaders() }
+        );
+      }
+    } else {
+      leadRecord = lead;
     }
 
     // 6. Create permanent Customer Contact record in Bharat Play Organization
@@ -214,7 +234,8 @@ export async function POST(request: NextRequest) {
       .filter(Boolean)
       .join('\n');
 
-    const { data: contact } = await supabase
+    let contactRecord: any = null;
+    const { data: contact, error: contactError } = await supabase
       .from('contacts')
       .insert({
         organization_id: targetOrgId,
@@ -227,24 +248,39 @@ export async function POST(request: NextRequest) {
         notes: registrationNotes,
       })
       .select()
-      .single();
+      .maybeSingle();
 
-    // Link contact to lead
-    if (contact && lead) {
+    if (contactError) {
+      await supabase.from('contacts').insert({
+        organization_id: targetOrgId,
+        first_name: firstName,
+        last_name: lastName || '-',
+        email: email || null,
+        phone: phone || null,
+        company_name: 'Bharat Play',
+        status: 'customer',
+        notes: registrationNotes,
+      });
+    } else {
+      contactRecord = contact;
+    }
+
+    // Link contact to lead if both records available
+    if (contactRecord && leadRecord) {
       await supabase
         .from('leads')
-        .update({ converted_contact_id: contact.id })
-        .eq('id', lead.id);
+        .update({ converted_contact_id: contactRecord.id })
+        .eq('id', leadRecord.id);
     }
 
     // 7. Log Activity in Bharat Play Activity Feed
     await supabase.from('activities').insert({
       organization_id: targetOrgId,
-      type: 'meeting',
+      type: 'note',
       title: `Event Booking: ${fullName || firstName}`,
       description: `Registered for Bharat Play. ${members} in group. Slot: ${slot}. Total Paid: ₹${numericValue}.`,
-      related_type: 'lead',
-      related_id: lead.id,
+      related_type: leadRecord ? 'lead' : null,
+      related_id: leadRecord?.id || null,
     });
 
     return NextResponse.json(
@@ -257,12 +293,12 @@ export async function POST(request: NextRequest) {
           slug: bharatPlayOrg.slug,
         },
         lead: {
-          id: lead.id,
-          title: lead.title,
-          status: lead.status,
-          value: lead.value,
+          title: leadTitle,
+          status: 'New',
+          value: numericValue,
+          id: leadRecord?.id || null,
         },
-        contactId: contact?.id || null,
+        contactId: contactRecord?.id || null,
       },
       { status: 201, headers: corsHeaders() }
     );
