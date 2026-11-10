@@ -28,26 +28,32 @@ export default function DashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadMetrics = useCallback(async () => {
-    if (!currentOrg?.id) return;
-    if (!metrics) {
-      setIsLoading(true);
-    }
-    try {
-      const data = await CRMService.getDashboardMetrics(currentOrg.id);
-      setMetrics(data);
-    } catch (err) {
-      console.error('Failed to load metrics', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [currentOrg?.id, metrics]);
-
   useEffect(() => {
-    if (currentOrg?.id) {
-      loadMetrics();
-    }
-  }, [currentOrg?.id, loadMetrics]);
+    if (!currentOrg?.id) return;
+
+    let isMounted = true;
+    // Instantly wipe old metrics to avoid any stale data display from previous organization
+    setMetrics(null);
+    setIsLoading(true);
+
+    CRMService.getDashboardMetrics(currentOrg.id)
+      .then((data) => {
+        if (isMounted) {
+          setMetrics(data);
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load dashboard metrics for org:', currentOrg.id, err);
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentOrg?.id]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -63,9 +69,16 @@ export default function DashboardPage() {
         {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Dashboard
-            </h1>
+            <div className="flex items-center space-x-2.5">
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                Dashboard
+              </h1>
+              {currentOrg?.name && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-primary-50 text-primary-700 border border-primary-200/80">
+                  {currentOrg.name}
+                </span>
+              )}
+            </div>
             <p className="text-sm text-slate-500 mt-0.5">
               {currentOrg?.name ? `Overview and pipeline metrics for ${currentOrg.name}.` : 'Overview and pipeline metrics.'}
             </p>

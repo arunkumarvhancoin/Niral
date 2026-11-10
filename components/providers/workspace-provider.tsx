@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { CRMService } from '../../lib/services/crm-service';
+import { CRMService, invalidateCRMCache } from '../../lib/services/crm-service';
 import { useOrganizationStore } from '../../lib/stores/organization-store';
 import { UserProfile, Organization, MemberRole, MemberStatus } from '../../lib/types/crm';
 import { useRouter, usePathname } from 'next/navigation';
@@ -14,6 +14,8 @@ interface WorkspaceContextType {
   currentStatus: MemberStatus | null;
   memberships: { organization: Organization; role: MemberRole; status: MemberStatus }[];
   isLoading: boolean;
+  isSwitchingOrg: boolean;
+  switchingOrgName: string | null;
   setCurrentOrg: (org: Organization, role: MemberRole, status: MemberStatus) => void;
   switchOrganization: (orgId: string) => Promise<void>;
   refreshWorkspace: (silent?: boolean, preferredOrgId?: string) => Promise<void>;
@@ -37,6 +39,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   // If currentOrg is already cached in localStorage via persist, don't show loading spinner!
   const [isLoading, setIsLoading] = useState(!currentOrg);
+  const [isSwitchingOrg, setIsSwitchingOrg] = useState(false);
+  const [switchingOrgName, setSwitchingOrgName] = useState<string | null>(null);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -141,8 +145,22 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       throw new Error(`Your membership status in this organization is ${membership.status}`);
     }
 
-    // Instant switch without full-screen blanking
+    setIsSwitchingOrg(true);
+    setSwitchingOrgName(membership.organization.name);
+
+    // Invalidate CRM cache so the dashboard and modules load exclusively fresh data for the new organization
+    invalidateCRMCache();
+
+    // Instant switch in Zustand store & cookie
     setCurrentOrg(membership.organization, membership.role, membership.status);
+
+    // Land on the dashboard of the newly chosen organization
+    router.push('/dashboard');
+
+    setTimeout(() => {
+      setIsSwitchingOrg(false);
+      setSwitchingOrgName(null);
+    }, 400);
   };
 
   const signOut = async () => {
@@ -161,6 +179,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         currentStatus,
         memberships,
         isLoading,
+        isSwitchingOrg,
+        switchingOrgName,
         setCurrentOrg,
         switchOrganization,
         refreshWorkspace,

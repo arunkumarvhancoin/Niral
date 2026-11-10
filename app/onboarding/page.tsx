@@ -10,6 +10,7 @@ import {
   Shield,
   Briefcase,
   ExternalLink,
+  Loader2,
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { LogoUpload } from '../../components/ui/logo-upload';
@@ -22,6 +23,7 @@ function OnboardingContent() {
 
   const [step, setStep] = useState<'select' | 'create'>(initialStep);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectingOrgId, setSelectingOrgId] = useState<string | null>(null);
   const router = useRouter();
 
   // Create Form State
@@ -38,11 +40,14 @@ function OnboardingContent() {
   const approvedMemberships = memberships.filter((m) => m.status === 'approved');
 
   const handleSelectOrg = async (orgId: string) => {
+    setSelectingOrgId(orgId);
     try {
       await switchOrganization(orgId);
       router.push('/dashboard');
     } catch (err: any) {
       toast.error(err.message || 'Failed to switch organization');
+    } finally {
+      setSelectingOrgId(null);
     }
   };
 
@@ -154,9 +159,21 @@ function OnboardingContent() {
                       </div>
                     </div>
 
-                    <button className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-slate-50 group-hover:bg-primary-600 group-hover:text-white text-slate-700 text-xs font-semibold transition-all">
-                      <span>Enter Workspace</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                    <button
+                      disabled={Boolean(selectingOrgId)}
+                      className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-slate-50 group-hover:bg-primary-600 group-hover:text-white text-slate-700 text-xs font-semibold transition-all disabled:opacity-50"
+                    >
+                      {selectingOrgId === item.organization.id ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Entering...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Enter Workspace</span>
+                          <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                        </>
+                      )}
                     </button>
                   </div>
                 ))}

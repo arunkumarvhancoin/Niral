@@ -5,11 +5,11 @@ import { useWorkspace } from '../providers/workspace-provider';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
 import { ToastContainer } from '../ui/toast-container';
-import { ShieldAlert, Clock, ArrowRight } from 'lucide-react';
+import { ShieldAlert, Clock, ArrowRight, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { currentOrg, currentRole, currentStatus, isLoading } = useWorkspace();
+  const { currentOrg, currentRole, currentStatus, isLoading, isSwitchingOrg, switchingOrgName } = useWorkspace();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Only show initial loading screen if we don't have an organization yet
@@ -75,6 +75,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <ToastContainer />
+
+      {/* Modern Workspace Switching Feedback Overlay */}
+      {isSwitchingOrg && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 flex flex-col items-center max-w-xs text-center space-y-3">
+            <div className="w-12 h-12 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center ring-1 ring-primary-500/20 shadow-xs">
+              <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-slate-900">Switching Workspace</h4>
+              <p className="text-xs text-slate-500 mt-1 truncate max-w-[200px]">
+                Entering <strong>{switchingOrgName || 'workspace'}</strong>...
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

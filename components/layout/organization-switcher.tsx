@@ -12,15 +12,19 @@ import {
   Shield,
   Layers,
   ArrowRight,
+  Loader2,
 } from 'lucide-react';
 import Link from 'next/navigation';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
+import { toast } from '../../lib/stores/toast-store';
 
 export function OrganizationSwitcher() {
-  const { currentOrg, currentRole, memberships, switchOrganization } = useWorkspace();
+  const { currentOrg, currentRole, memberships, switchOrganization, isSwitchingOrg } = useWorkspace();
   const [isOpen, setIsOpen] = useState(false);
+  const [switchingOrgId, setSwitchingOrgId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -31,6 +35,23 @@ export function OrganizationSwitcher() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const handleSwitchOrg = async (orgId: string) => {
+    if (orgId === currentOrg?.id && pathname === '/dashboard') {
+      setIsOpen(false);
+      return;
+    }
+    setSwitchingOrgId(orgId);
+    try {
+      await switchOrganization(orgId);
+      setIsOpen(false);
+      router.push('/dashboard');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to switch workspace');
+    } finally {
+      setSwitchingOrgId(null);
+    }
+  };
 
   const approvedMemberships = memberships.filter((m) => m.status === 'approved');
   const pendingMemberships = memberships.filter((m) => m.status === 'pending');
@@ -54,21 +75,28 @@ export function OrganizationSwitcher() {
     <div className="relative w-full" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between p-2.5 rounded-lg border border-slate-200/80 bg-white hover:bg-slate-50 transition-colors shadow-sm text-left group"
+        disabled={isSwitchingOrg}
+        className="w-full flex items-center justify-between p-2.5 rounded-lg border border-slate-200/80 bg-white hover:bg-slate-50 transition-colors shadow-sm text-left group disabled:opacity-75"
       >
         <div className="flex items-center space-x-3 overflow-hidden">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-primary-600 flex items-center justify-center text-white font-semibold flex-shrink-0 shadow-xs overflow-hidden">
-            {currentOrg?.logo_url ? (
+            {isSwitchingOrg ? (
+              <Loader2 className="w-4 h-4 animate-spin text-white" />
+            ) : currentOrg?.logo_url ? (
               <img src={currentOrg.logo_url} alt={currentOrg.name} className="w-full h-full object-cover" />
             ) : (
               <Building2 className="w-4 h-4 text-white" />
             )}
           </div>
           <span className="text-sm font-semibold text-slate-900 truncate">
-            {currentOrg?.name || 'Select Workspace'}
+            {isSwitchingOrg ? 'Switching...' : currentOrg?.name || 'Select Workspace'}
           </span>
         </div>
-        <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-transform ml-2 flex-shrink-0" />
+        {isSwitchingOrg ? (
+          <Loader2 className="w-4 h-4 text-primary-600 animate-spin ml-2 flex-shrink-0" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-transform ml-2 flex-shrink-0" />
+        )}
       </button>
 
       {isOpen && (
@@ -80,18 +108,17 @@ export function OrganizationSwitcher() {
           <div className="max-h-56 overflow-y-auto px-1.5 space-y-1">
             {approvedMemberships.map((item) => {
               const isSelected = item.organization.id === currentOrg?.id;
+              const isItemSwitching = switchingOrgId === item.organization.id;
               return (
                 <button
                   key={item.organization.id}
-                  onClick={() => {
-                    switchOrganization(item.organization.id);
-                    setIsOpen(false);
-                  }}
+                  disabled={Boolean(switchingOrgId) || isSwitchingOrg}
+                  onClick={() => handleSwitchOrg(item.organization.id)}
                   className={`w-full flex items-center justify-between p-2 rounded-lg text-left transition-colors ${
                     isSelected
                       ? 'bg-slate-100/90 text-slate-900 font-medium'
                       : 'hover:bg-slate-50 text-slate-700'
-                  }`}
+                  } ${isItemSwitching ? 'opacity-70 bg-primary-50/60' : ''}`}
                 >
                   <div className="flex items-center space-x-2.5 overflow-hidden">
                     <div className="w-7 h-7 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -106,7 +133,11 @@ export function OrganizationSwitcher() {
                       <span className="text-[11px] text-slate-500 capitalize">{item.role}</span>
                     </div>
                   </div>
-                  {isSelected && <Check className="w-4 h-4 text-primary-600 flex-shrink-0 ml-2" />}
+                  {isItemSwitching ? (
+                    <Loader2 className="w-4 h-4 text-primary-600 animate-spin flex-shrink-0 ml-2" />
+                  ) : isSelected ? (
+                    <Check className="w-4 h-4 text-primary-600 flex-shrink-0 ml-2" />
+                  ) : null}
                 </button>
               );
             })}
