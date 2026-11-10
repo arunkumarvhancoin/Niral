@@ -108,6 +108,51 @@ export const CRMService = {
     }
   },
 
+  updateProfile: async (
+    userId: string,
+    updates: {
+      full_name?: string;
+      avatar_url?: string | null;
+    }
+  ): Promise<UserProfile> => {
+    const supabase = createBrowserClient();
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(error.message || 'Failed to update personal profile');
+    }
+
+    try {
+      await supabase.auth.updateUser({
+        data: {
+          full_name: updates.full_name,
+          avatar_url: updates.avatar_url,
+        },
+      });
+    } catch (authErr) {
+      console.warn('Auth user metadata update notice:', authErr);
+    }
+
+    invalidateCRMCache();
+    return data as UserProfile;
+  },
+
+  updatePassword: async (newPassword: string): Promise<void> => {
+    const supabase = createBrowserClient();
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      throw new Error(error.message || 'Failed to update password');
+    }
+  },
+
   // 2. Organizations & Memberships
   getUserOrganizations: async (
     userId: string

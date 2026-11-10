@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Shield,
   Menu,
+  Building2,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -102,13 +103,23 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
                 </div>
               </div>
               <Link
-                href="/settings"
+                href="/settings?tab=personal"
                 onClick={() => setShowUserMenu(false)}
                 className="w-full flex items-center space-x-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
               >
                 <User className="w-3.5 h-3.5 text-slate-400" />
-                <span>Account & Organization Settings</span>
+                <span>Personal Settings</span>
               </Link>
+              {(currentRole === 'Owner' || currentRole === 'Admin') && (
+                <Link
+                  href="/settings?tab=company"
+                  onClick={() => setShowUserMenu(false)}
+                  className="w-full flex items-center space-x-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Company Settings</span>
+                </Link>
+              )}
               <Link
                 href="/onboarding"
                 onClick={() => setShowUserMenu(false)}
