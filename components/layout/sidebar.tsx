@@ -31,7 +31,7 @@ export function Sidebar() {
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Contacts', href: '/contacts', icon: Users2 },
     { name: 'Leads', href: '/leads', icon: Target },
-    { name: 'Bharat Play', href: '/bharat-play', icon: Ticket },
+    { name: 'Registrations', href: '/registrations', icon: Ticket },
     { name: 'Deals', href: '/deals', icon: BarChart3 },
     { name: 'Tasks & Feed', href: '/tasks', icon: CheckSquare },
     ...(canViewTeam ? [{ name: 'Team', href: '/team', icon: UserCheck }] : []),

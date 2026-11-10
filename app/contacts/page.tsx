@@ -566,7 +566,7 @@ export default function ContactsPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-medium text-slate-700 mb-1">
-                          Est. Deal Value ($) *
+                          Est. Deal Value (₹) *
                         </label>
                         <input
                           type="number"

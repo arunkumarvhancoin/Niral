@@ -233,7 +233,7 @@ export default function DealsPage() {
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Active Pipeline</p>
-              <p className="text-lg font-bold text-slate-900">${totalPipelineValue.toLocaleString()}</p>
+              <p className="text-lg font-bold text-slate-900">₹{totalPipelineValue.toLocaleString('en-IN')}</p>
               <p className="text-[10px] text-slate-400">{openDeals.length} active opportunities</p>
             </div>
           </div>
@@ -244,7 +244,7 @@ export default function DealsPage() {
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Won Revenue</p>
-              <p className="text-lg font-bold text-emerald-600">${wonValue.toLocaleString()}</p>
+              <p className="text-lg font-bold text-emerald-600">₹{wonValue.toLocaleString('en-IN')}</p>
               <p className="text-[10px] text-emerald-600/80 font-medium">{wonDeals.length} closed won</p>
             </div>
           </div>
@@ -266,7 +266,7 @@ export default function DealsPage() {
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Avg Deal Size</p>
-              <p className="text-lg font-bold text-slate-900">${avgDealSize.toLocaleString()}</p>
+              <p className="text-lg font-bold text-slate-900">₹{avgDealSize.toLocaleString('en-IN')}</p>
               <p className="text-[10px] text-slate-400">opportunity value</p>
             </div>
           </div>
@@ -316,7 +316,7 @@ export default function DealsPage() {
                         </h4>
                       </div>
                       <span className="text-[11px] text-slate-500 font-medium mt-0.5 block">
-                        ${stageTotalValue.toLocaleString()} &bull; {stageDeals.length} deals
+                        ₹{stageTotalValue.toLocaleString('en-IN')} &bull; {stageDeals.length} deals
                       </span>
                     </div>
                     <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
@@ -378,7 +378,7 @@ export default function DealsPage() {
 
                             <div className="mt-2.5 flex items-center justify-between text-xs">
                               <span className="font-bold text-slate-900 bg-slate-50 px-2 py-0.5 rounded border border-slate-200/60">
-                                ${Number(deal.value).toLocaleString()}
+                                ₹{Number(deal.value).toLocaleString('en-IN')}
                               </span>
                               {deal.expected_close_date && (
                                 <span className="text-[10px] text-slate-500 flex items-center font-medium">
@@ -467,7 +467,7 @@ export default function DealsPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Value ($) *</label>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Value (₹) *</label>
                     <input
                       type="number"
                       required

@@ -221,10 +221,10 @@ export default function LeadsPage() {
               </div>
             </div>
             <Link
-              href="/bharat-play"
+              href="/registrations"
               className="inline-flex items-center justify-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-white hover:bg-sky-50 border border-sky-300 text-sky-700 text-xs font-semibold shadow-xs transition-colors whitespace-nowrap self-start sm:self-auto"
             >
-              <span>View Bharat Play Page</span>
+              <span>View Registrations</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </Link>
           </div>
@@ -372,7 +372,7 @@ export default function LeadsPage() {
                         <div className="text-[11px] text-slate-500">{lead.company || 'Private Entity'}</div>
                       </td>
                       <td className="py-3.5 px-4 font-semibold text-slate-900">
-                        ${Number(lead.value).toLocaleString()}
+                        ₹{Number(lead.value).toLocaleString('en-IN')}
                       </td>
                       <td className="py-3.5 px-4">
                         <span className="text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">
@@ -504,7 +504,7 @@ export default function LeadsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Est. Deal Value ($)</label>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Est. Deal Value (₹)</label>
                     <input
                       type="number"
                       value={formData.value}
