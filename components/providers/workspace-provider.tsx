@@ -62,7 +62,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const router = useRouter();
   const pathname = usePathname();
-  const pathnameRef = useRef(pathname);
+  const pathnameRef = React.useRef(pathname);
   pathnameRef.current = pathname;
 
   const refreshWorkspace = useCallback(async (silent: boolean = false, preferredOrgId?: string) => {
