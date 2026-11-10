@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { CRMService, invalidateCRMCache } from '../../lib/services/crm-service';
 import { useOrganizationStore } from '../../lib/stores/organization-store';
 import { UserProfile, Organization, MemberRole, MemberStatus } from '../../lib/types/crm';
@@ -24,6 +24,24 @@ interface WorkspaceContextType {
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
+function getStoredActiveOrgId(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|;\s*)active_org_id=([^;]+)/);
+  if (match && match[1]) {
+    return decodeURIComponent(match[1]);
+  }
+  try {
+    const raw = localStorage.getItem('crm_active_organization');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.state?.currentOrg?.id) {
+        return parsed.state.currentOrg.id;
+      }
+    }
+  } catch {}
+  return null;
+}
+
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
 
@@ -44,6 +62,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const router = useRouter();
   const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
 
   const refreshWorkspace = useCallback(async (silent: boolean = false, preferredOrgId?: string) => {
     try {
@@ -52,12 +72,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
       if (!user) {
         reset();
-        // If on protected page and not logged in, redirect to login
+        const currentPath = pathnameRef.current;
         if (
-          !pathname.startsWith('/auth') &&
-          pathname !== '/login' &&
-          pathname !== '/register' &&
-          !pathname.startsWith('/invite')
+          !currentPath.startsWith('/auth') &&
+          currentPath !== '/login' &&
+          currentPath !== '/register' &&
+          !currentPath.startsWith('/invite')
         ) {
           router.push('/auth/login');
         }
@@ -70,26 +90,54 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
       const approvedMemberships = userMemberships.filter((m) => m.status === 'approved');
 
-      // Check preferredOrgId first, then cookie or previous active org
-      const targetId = preferredOrgId || currentOrg?.id;
-      let targetMembership = approvedMemberships.find((m) => m.organization.id === targetId);
+      // Preserve the user's currently chosen organization strictly!
+      // Check: 1) preferredOrgId, 2) Zustand store currentOrg, 3) cookie active_org_id, 4) localStorage
+      const activeOrg = useOrganizationStore.getState().currentOrg;
+      const storedOrgId = activeOrg?.id || getStoredActiveOrgId();
+      const targetId = preferredOrgId || storedOrgId;
 
-      // If active org is invalid or not approved, pick first approved
-      if (!targetMembership && approvedMemberships.length > 0) {
+      let targetMembership = targetId
+        ? approvedMemberships.find((m) => m.organization.id === targetId)
+        : null;
+
+      // If the current organization is pending, keep it without auto-switching away!
+      if (!targetMembership && targetId) {
+        const pending = userMemberships.find((m) => m.organization.id === targetId);
+        if (pending) {
+          targetMembership = pending;
+        }
+      }
+
+      // ONLY if there is NO active organization recorded anywhere (e.g. brand new user login),
+      // pick the first available organization
+      if (!targetMembership && !targetId && approvedMemberships.length > 0) {
         targetMembership = approvedMemberships[0];
       }
 
       if (targetMembership) {
-        setCurrentOrg(targetMembership.organization, targetMembership.role, targetMembership.status);
-      } else {
-        // If user has no approved orgs, check if they have a pending membership or should be routed to onboarding
-        if (userMemberships.length > 0) {
-          const firstPending = userMemberships[0];
-          setCurrentOrg(firstPending.organization, firstPending.role, firstPending.status);
-        } else if (
-          !pathname.startsWith('/onboarding') &&
-          !pathname.startsWith('/auth') &&
-          !pathname.startsWith('/invite')
+        const storeOrg = useOrganizationStore.getState().currentOrg;
+        const storeRole = useOrganizationStore.getState().currentRole;
+        const storeStatus = useOrganizationStore.getState().currentStatus;
+
+        // CRUCIAL: Only update if organization details, role, or status have actually changed
+        // Never trigger an organization change or re-render if the user is already in this org!
+        const hasChanged =
+          !storeOrg ||
+          storeOrg.id !== targetMembership.organization.id ||
+          storeRole !== targetMembership.role ||
+          storeStatus !== targetMembership.status ||
+          storeOrg.name !== targetMembership.organization.name ||
+          storeOrg.logo_url !== targetMembership.organization.logo_url;
+
+        if (hasChanged) {
+          setCurrentOrg(targetMembership.organization, targetMembership.role, targetMembership.status);
+        }
+      } else if (userMemberships.length === 0) {
+        const currentPath = pathnameRef.current;
+        if (
+          !currentPath.startsWith('/onboarding') &&
+          !currentPath.startsWith('/auth') &&
+          !currentPath.startsWith('/invite')
         ) {
           router.push('/onboarding');
         }
@@ -99,7 +147,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [currentOrg?.id, pathname, router, setCurrentOrg, setMemberships, reset]);
+  }, [router, setCurrentOrg, setMemberships, reset]);
 
   useEffect(() => {
     // Initial fetch - silent if we already have an active org
