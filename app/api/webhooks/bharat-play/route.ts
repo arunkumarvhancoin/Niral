@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
       body.source === 'Paid via Cashfree' ||
       (typeof body.notes === 'string' && body.notes.includes('PAYMENT STATUS: PAID'));
 
-    const paymentStatus = isPaid ? 'PAID' : 'UNPAID';
+    const paymentStatus = isPaid ? 'PAID' : 'NOT PAID';
     const paymentMethod = body.paymentMethod || 'Cashfree';
 
     const leadTitle = `Bharat Play: ${fullName || firstName} (${members} · ${slot}) [${paymentStatus}]`;

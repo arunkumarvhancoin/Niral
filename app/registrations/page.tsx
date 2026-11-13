@@ -157,58 +157,17 @@ export default function RegistrationsPage() {
     ) {
       return {
         status: 'PAID' as const,
-        label: 'Paid (Cashfree)',
-        badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-        dotClass: 'bg-emerald-500',
-      };
-    }
-
-    if (
-      notes.includes('• Payment Status: UNPAID') ||
-      notes.includes('PAYMENT STATUS: NOT PAID') ||
-      title.includes('[UNPAID]') ||
-      title.includes('NOT PAID')
-    ) {
-      return {
-        status: 'UNPAID' as const,
-        label: 'Not Paid',
-        badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
-        dotClass: 'bg-rose-500',
-      };
-    }
-
-    const screenshot = extractScreenshotUrl(reg);
-    if (screenshot && screenshot.includes('data:image/svg+xml')) {
-      if (decodeURIComponent(screenshot).includes('ONLINE PAYMENT CONFIRMED')) {
-        return {
-          status: 'PAID' as const,
-          label: 'Paid (Cashfree)',
-          badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-          dotClass: 'bg-emerald-500',
-        };
-      }
-      return {
-        status: 'UNPAID' as const,
-        label: 'Not Paid',
-        badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
-        dotClass: 'bg-rose-500',
-      };
-    }
-
-    if (screenshot) {
-      return {
-        status: 'PAID' as const,
-        label: 'Paid (Proof)',
+        label: 'PAID',
         badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
         dotClass: 'bg-emerald-500',
       };
     }
 
     return {
-      status: 'UNPAID' as const,
-      label: 'Pending',
-      badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
-      dotClass: 'bg-amber-500',
+      status: 'NOT PAID' as const,
+      label: 'NOT PAID',
+      badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
+      dotClass: 'bg-rose-500',
     };
   };
 
@@ -344,7 +303,7 @@ export default function RegistrationsPage() {
     const matchesPayment =
       paymentFilter === 'all' ||
       (paymentFilter === 'paid' && payment.status === 'PAID') ||
-      (paymentFilter === 'unpaid' && payment.status === 'UNPAID');
+      (paymentFilter === 'unpaid' && payment.status === 'NOT PAID');
 
     return matchesSearch && matchesSlot && matchesPayment;
   });
