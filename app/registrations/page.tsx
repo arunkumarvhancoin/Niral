@@ -632,7 +632,6 @@ export default function RegistrationsPage() {
                   <th className="py-3 px-4">Email ID</th>
                   <th className="py-3 px-4">Phone Number</th>
                   <th className="py-3 px-4">Members</th>
-                  <th className="py-3 px-4">Slot</th>
                   <th className="py-3 px-4">Payable</th>
                   <th className="py-3 px-4">Payment Status</th>
                   <th className="py-3 px-4">Payment Proof</th>
@@ -643,13 +642,13 @@ export default function RegistrationsPage() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-slate-400 text-sm">
+                    <td colSpan={9} className="py-12 text-center text-slate-400 text-sm">
                       Loading registrations...
                     </td>
                   </tr>
                 ) : filteredRegistrations.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-14 text-center text-slate-400">
+                    <td colSpan={9} className="py-14 text-center text-slate-400">
                       <p className="text-base font-medium text-slate-700">No registrations found</p>
                       <p className="text-sm text-slate-400 mt-1">Attendee submissions will appear here automatically.</p>
                     </td>
@@ -697,11 +696,6 @@ export default function RegistrationsPage() {
                           <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-800">
                             {members}
                           </span>
-                        </td>
-
-                        {/* Chosen Slot */}
-                        <td className="py-3.5 px-4 text-slate-800 font-medium">
-                          {slot}
                         </td>
 
                         {/* Total Payable (Rupees) */}
