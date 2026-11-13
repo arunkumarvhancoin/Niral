@@ -183,13 +183,18 @@ export async function POST(request: NextRequest) {
 
     const leadTitle = `Bharat Play: ${fullName || firstName} (${members} · ${slot}) [${paymentStatus}]`;
 
-    // 6. Check if lead already exists for this phone or email in Bharat Play to update status
+    // 6. Check if lead already exists for this phone or email in Bharat Play to update/upgrade status
+    // Only match existing lead if incoming status is PAID (to convert a pending unpaid lead from the same session),
+    // otherwise new checkout submissions ALWAYS create a fresh lead so every registration attempt appears in the table.
     let existingLead: { id: string; converted_contact_id: string | null } | null = null;
-    if (phone || email) {
+    if (isPaid && (phone || email)) {
+      const past24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       let query = supabase
         .from('leads')
         .select('id, converted_contact_id')
-        .eq('organization_id', targetOrgId);
+        .eq('organization_id', targetOrgId)
+        .neq('status', 'Converted')
+        .gte('created_at', past24Hours);
 
       if (phone && email) {
         query = query.or(`phone.eq.${phone},email.eq.${email}`);
@@ -248,6 +253,7 @@ export async function POST(request: NextRequest) {
           title: leadTitle,
           value: numericValue,
           status: isPaid ? 'Converted' : 'New',
+          created_at: new Date().toISOString(),
         })
         .eq('id', existingLead.id);
     } else {

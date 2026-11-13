@@ -118,9 +118,13 @@ export default function RegistrationsPage() {
   const parseLeadDetails = (title: string) => {
     const match = title.match(/\((.*?)\s*·\s*(.*?)\)/);
     if (match) {
+      const rawSlot = match[2]?.trim() || '10:00 AM – 1:00 PM';
+      const cleanSlot = rawSlot.replace(/\s*•\s*(PAID|NOT PAID).*$/i, '').trim();
+      const rawMembers = match[1]?.trim() || '1 Member';
+      const cleanMembers = rawMembers.replace(/\s*•\s*(PAID|NOT PAID).*$/i, '').trim();
       return {
-        members: match[1]?.trim() || '1 Member',
-        slot: match[2]?.trim() || '10:00 AM – 1:00 PM',
+        members: cleanMembers || '1 Member',
+        slot: cleanSlot || '10:00 AM – 1:00 PM',
       };
     }
     return {
@@ -634,7 +638,6 @@ export default function RegistrationsPage() {
                   <th className="py-3 px-4">Members</th>
                   <th className="py-3 px-4">Payable</th>
                   <th className="py-3 px-4">Payment Status</th>
-                  <th className="py-3 px-4">Payment Proof</th>
                   <th className="py-3 px-4">Date & Time (IST)</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
@@ -642,13 +645,13 @@ export default function RegistrationsPage() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-400 text-sm">
+                    <td colSpan={8} className="py-12 text-center text-slate-400 text-sm">
                       Loading registrations...
                     </td>
                   </tr>
                 ) : filteredRegistrations.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-14 text-center text-slate-400">
+                    <td colSpan={8} className="py-14 text-center text-slate-400">
                       <p className="text-base font-medium text-slate-700">No registrations found</p>
                       <p className="text-sm text-slate-400 mt-1">Attendee submissions will appear here automatically.</p>
                     </td>
@@ -711,24 +714,6 @@ export default function RegistrationsPage() {
                             <span className={`w-1.5 h-1.5 rounded-full ${paymentInfo.dotClass}`} />
                             {paymentInfo.label}
                           </span>
-                        </td>
-
-                        {/* Payment Proof / Screenshot */}
-                        <td className="py-3.5 px-4">
-                          {screenshotUrl ? (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setZoomedScreenshot(screenshotUrl);
-                              }}
-                              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
-                            >
-                              <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>View Proof</span>
-                            </button>
-                          ) : (
-                            <span className="text-slate-400 text-xs">—</span>
-                          )}
                         </td>
 
                         {/* Date Registered */}
