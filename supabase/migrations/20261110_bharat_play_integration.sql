@@ -16,12 +16,13 @@ ON CONFLICT (slug) DO UPDATE
 SET name = EXCLUDED.name,
     description = EXCLUDED.description;
 
--- 2. Remove blanket public policies so only members have access
-DROP POLICY IF EXISTS "Allow read for Bharat Play leads" ON public.leads;
-DROP POLICY IF EXISTS "Allow delete for Bharat Play leads" ON public.leads;
-DROP POLICY IF EXISTS "Allow read for Bharat Play contacts" ON public.contacts;
-DROP POLICY IF EXISTS "Allow delete for Bharat Play contacts" ON public.contacts;
+-- 2. Allow public / anonymous webhook client to read the Bharat Play organization
 DROP POLICY IF EXISTS "Allow public read for Bharat Play organization" ON public.organizations;
+CREATE POLICY "Allow public read for Bharat Play organization"
+ON public.organizations
+FOR SELECT
+TO anon, authenticated
+USING (slug = 'bharat-play');
 
 -- 3. Allow members of the organization to view all registrations (leads)
 DROP POLICY IF EXISTS "Approved members can view leads" ON public.leads;
@@ -98,6 +99,29 @@ ON public.activities
 FOR INSERT
 TO anon, authenticated
 WITH CHECK (
+  organization_id IN (
+    SELECT id FROM public.organizations WHERE slug = 'bharat-play'
+  )
+);
+
+-- 7. Allow public webhook to update leads & contacts (e.g. flipping UNPAID to PAID)
+DROP POLICY IF EXISTS "Allow public webhook lead update for Bharat Play" ON public.leads;
+CREATE POLICY "Allow public webhook lead update for Bharat Play"
+ON public.leads
+FOR UPDATE
+TO anon, authenticated
+USING (
+  organization_id IN (
+    SELECT id FROM public.organizations WHERE slug = 'bharat-play'
+  )
+);
+
+DROP POLICY IF EXISTS "Allow public webhook contact update for Bharat Play" ON public.contacts;
+CREATE POLICY "Allow public webhook contact update for Bharat Play"
+ON public.contacts
+FOR UPDATE
+TO anon, authenticated
+USING (
   organization_id IN (
     SELECT id FROM public.organizations WHERE slug = 'bharat-play'
   )
