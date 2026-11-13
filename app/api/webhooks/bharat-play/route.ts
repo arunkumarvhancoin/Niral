@@ -169,72 +169,138 @@ export async function POST(request: NextRequest) {
         : parseFloat(String(rawAmount).replace(/[^0-9.]/g, '')) || 649;
 
     const transactionId = body.transactionId || body.utr || body.upi_ref || body.upiRef || null;
-    const screenshotUrl = body.paymentScreenshot || body.screenshot_url || null;
+    const screenshotUrl = body.paymentScreenshot || body.screenshot_url || body.paymentProof || null;
 
-    const leadTitle = `Bharat Play: ${fullName || firstName} (${members} · ${slot})`;
+    // 5. Payment Status & Method detection
+    const rawStatus = (body.paymentStatus || body.status || '').toUpperCase();
+    const isPaid =
+      rawStatus === 'PAID' ||
+      body.source === 'Paid via Cashfree' ||
+      (typeof body.notes === 'string' && body.notes.includes('PAYMENT STATUS: PAID'));
 
-    const contactId = crypto.randomUUID();
-    const leadId = crypto.randomUUID();
+    const paymentStatus = isPaid ? 'PAID' : 'UNPAID';
+    const paymentMethod = body.paymentMethod || 'Cashfree';
 
-    // 5. Create permanent Customer Contact record in Bharat Play Organization
+    const leadTitle = `Bharat Play: ${fullName || firstName} (${members} · ${slot}) [${paymentStatus}]`;
+
+    // 6. Check if lead already exists for this phone or email in Bharat Play to update status
+    let existingLead: { id: string; converted_contact_id: string | null } | null = null;
+    if (phone || email) {
+      let query = supabase
+        .from('leads')
+        .select('id, converted_contact_id')
+        .eq('organization_id', targetOrgId);
+
+      if (phone && email) {
+        query = query.or(`phone.eq.${phone},email.eq.${email}`);
+      } else if (phone) {
+        query = query.eq('phone', phone);
+      } else if (email) {
+        query = query.eq('email', email);
+      }
+
+      const { data: found } = await query
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      existingLead = found;
+    }
+
     const registrationNotes = [
       `Bharat Play Reservation Details:`,
       `• Members/Group Size: ${members}`,
       `• Chosen Slot: ${slot}`,
       `• Total Amount: ₹${numericValue}`,
+      `• Payment Status: ${paymentStatus}`,
+      `• Payment Gateway / Method: ${paymentMethod}`,
       transactionId ? `• UPI Transaction / UTR: ${transactionId}` : null,
       screenshotUrl ? `• Payment Screenshot: ${screenshotUrl}` : null,
-      `• Source: Bharat Play Registration Form`,
+      `• Source: ${body.source || 'Bharat Play Checkout'}`,
       `• Registered: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} (IST)`,
     ]
       .filter(Boolean)
       .join('\n');
 
-    await supabase.from('contacts').insert({
-      id: contactId,
-      organization_id: targetOrgId,
-      first_name: firstName,
-      last_name: lastName || '-',
-      email: email || null,
-      phone: phone || null,
-      company_name: 'Bharat Play',
-      status: 'customer',
-      notes: registrationNotes,
-    });
+    let finalLeadId: string;
+    let finalContactId: string;
 
-    // 6. Insert Lead strictly into Bharat Play Organization linked to the contact
-    const { error: leadError } = await supabase.from('leads').insert({
-      id: leadId,
-      organization_id: targetOrgId,
-      title: leadTitle,
-      first_name: firstName,
-      last_name: lastName,
-      email: email || null,
-      phone: phone || null,
-      company: 'Bharat Play',
-      source: 'Event',
-      status: 'New',
-      priority: 'High',
-      value: numericValue,
-      converted_contact_id: contactId,
-    });
+    if (existingLead) {
+      finalLeadId = existingLead.id;
+      finalContactId = existingLead.converted_contact_id || crypto.randomUUID();
 
-    if (leadError) {
-      console.error('Failed to insert Bharat Play lead:', leadError);
-      return NextResponse.json(
-        { success: false, error: leadError.message },
-        { status: 500, headers: corsHeaders() }
-      );
+      if (existingLead.converted_contact_id) {
+        await supabase
+          .from('contacts')
+          .update({
+            first_name: firstName,
+            last_name: lastName || '-',
+            email: email || undefined,
+            phone: phone || undefined,
+            notes: registrationNotes,
+          })
+          .eq('id', existingLead.converted_contact_id);
+      }
+
+      await supabase
+        .from('leads')
+        .update({
+          title: leadTitle,
+          value: numericValue,
+          status: isPaid ? 'Converted' : 'New',
+        })
+        .eq('id', existingLead.id);
+    } else {
+      finalContactId = crypto.randomUUID();
+      finalLeadId = crypto.randomUUID();
+
+      await supabase.from('contacts').insert({
+        id: finalContactId,
+        organization_id: targetOrgId,
+        first_name: firstName,
+        last_name: lastName || '-',
+        email: email || null,
+        phone: phone || null,
+        company_name: 'Bharat Play',
+        status: isPaid ? 'customer' : 'lead',
+        notes: registrationNotes,
+      });
+
+      const { error: leadError } = await supabase.from('leads').insert({
+        id: finalLeadId,
+        organization_id: targetOrgId,
+        title: leadTitle,
+        first_name: firstName,
+        last_name: lastName,
+        email: email || null,
+        phone: phone || null,
+        company: 'Bharat Play',
+        source: 'Event',
+        status: isPaid ? 'Converted' : 'New',
+        priority: 'High',
+        value: numericValue,
+        converted_contact_id: finalContactId,
+      });
+
+      if (leadError) {
+        console.error('Failed to insert Bharat Play lead:', leadError);
+        return NextResponse.json(
+          { success: false, error: leadError.message },
+          { status: 500, headers: corsHeaders() }
+        );
+      }
     }
 
     // 7. Log Activity in Bharat Play Activity Feed
     await supabase.from('activities').insert({
       organization_id: targetOrgId,
       type: 'note',
-      title: `Event Booking: ${fullName || firstName}`,
-      description: `Registered for Bharat Play. ${members} in group. Slot: ${slot}. Total Paid: ₹${numericValue}.${screenshotUrl ? ' Payment Screenshot Attached.' : ''}`,
+      title: `Event Booking [${paymentStatus}]: ${fullName || firstName}`,
+      description: `Registered for Bharat Play. ${members} in group. Slot: ${slot}. Total: ₹${numericValue}. Payment Status: ${paymentStatus}.${
+        screenshotUrl ? ' Payment Screenshot / Receipt Attached.' : ''
+      }`,
       related_type: 'lead',
-      related_id: leadId,
+      related_id: finalLeadId,
     });
 
     return NextResponse.json(
@@ -247,12 +313,12 @@ export async function POST(request: NextRequest) {
           slug: bharatPlayOrg.slug,
         },
         lead: {
-          id: leadId,
+          id: finalLeadId,
           title: leadTitle,
-          status: 'New',
+          status: isPaid ? 'Converted' : 'New',
           value: numericValue,
         },
-        contactId,
+        contactId: finalContactId,
       },
       { status: 201, headers: corsHeaders() }
     );

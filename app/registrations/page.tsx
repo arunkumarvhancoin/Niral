@@ -39,6 +39,7 @@ export default function RegistrationsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [slotFilter, setSlotFilter] = useState('all');
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
 
   // Selected registration for the details modal
   const [selectedReg, setSelectedReg] = useState<RegistrationLead | null>(null);
@@ -138,6 +139,75 @@ export default function RegistrationsPage() {
     return null;
   };
 
+  // Helper to extract and format payment status
+  const extractPaymentStatus = (reg: RegistrationLead) => {
+    const notes = reg.contact?.notes || '';
+    const title = reg.title || '';
+
+    if (
+      notes.includes('• Payment Status: PAID') ||
+      notes.includes('PAYMENT STATUS: PAID') ||
+      title.includes('[PAID]') ||
+      title.includes('• PAID') ||
+      reg.status === 'Converted'
+    ) {
+      return {
+        status: 'PAID' as const,
+        label: 'Paid (Cashfree)',
+        badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        dotClass: 'bg-emerald-500',
+      };
+    }
+
+    if (
+      notes.includes('• Payment Status: UNPAID') ||
+      notes.includes('PAYMENT STATUS: NOT PAID') ||
+      title.includes('[UNPAID]') ||
+      title.includes('NOT PAID')
+    ) {
+      return {
+        status: 'UNPAID' as const,
+        label: 'Not Paid',
+        badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
+        dotClass: 'bg-rose-500',
+      };
+    }
+
+    const screenshot = extractScreenshotUrl(reg);
+    if (screenshot && screenshot.includes('data:image/svg+xml')) {
+      if (decodeURIComponent(screenshot).includes('ONLINE PAYMENT CONFIRMED')) {
+        return {
+          status: 'PAID' as const,
+          label: 'Paid (Cashfree)',
+          badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+          dotClass: 'bg-emerald-500',
+        };
+      }
+      return {
+        status: 'UNPAID' as const,
+        label: 'Not Paid',
+        badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
+        dotClass: 'bg-rose-500',
+      };
+    }
+
+    if (screenshot) {
+      return {
+        status: 'PAID' as const,
+        label: 'Paid (Proof)',
+        badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        dotClass: 'bg-emerald-500',
+      };
+    }
+
+    return {
+      status: 'UNPAID' as const,
+      label: 'Pending',
+      badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+      dotClass: 'bg-amber-500',
+    };
+  };
+
   // Helper to extract headcount number
   const extractHeadcount = (title: string): number => {
     const { members } = parseLeadDetails(title);
@@ -207,6 +277,7 @@ export default function RegistrationsPage() {
       'Number of Members',
       'Chosen Slot',
       'Total Payable (INR)',
+      'Payment Status',
       'Payment Screenshot Attached',
       'Date & Time Registered (IST)',
     ];
@@ -214,6 +285,7 @@ export default function RegistrationsPage() {
     const rows = filteredRegistrations.map((reg) => {
       const { members, slot } = parseLeadDetails(reg.title);
       const name = `${reg.first_name || ''} ${reg.last_name || ''}`.trim() || reg.title;
+      const payment = extractPaymentStatus(reg);
       const hasScreenshot = extractScreenshotUrl(reg) ? 'Yes' : 'No';
       return [
         `"${reg.id}"`,
@@ -223,6 +295,7 @@ export default function RegistrationsPage() {
         `"${members.replace(/"/g, '""')}"`,
         `"${slot.replace(/"/g, '""')}"`,
         `"₹${(reg.value || 649).toLocaleString('en-IN')}"`,
+        `"${payment.label}"`,
         `"${hasScreenshot}"`,
         `"${new Date(reg.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}"`,
       ].join(',');
@@ -263,13 +336,20 @@ export default function RegistrationsPage() {
 
     const matchesSlot = slotFilter === 'all' || slot === slotFilter;
 
-    return matchesSearch && matchesSlot;
+    const payment = extractPaymentStatus(reg);
+    const matchesPayment =
+      paymentFilter === 'all' ||
+      (paymentFilter === 'paid' && payment.status === 'PAID') ||
+      (paymentFilter === 'unpaid' && payment.status === 'UNPAID');
+
+    return matchesSearch && matchesSlot && matchesPayment;
   });
 
   // KPI Calculations in INR
   const totalRegistrations = registrations.length;
   const totalAttendees = registrations.reduce((sum, r) => sum + extractHeadcount(r.title), 0);
-  const totalPayableRupees = registrations.reduce((sum, r) => sum + (Number(r.value) || 0), 0);
+  const paidRegistrations = registrations.filter((r) => extractPaymentStatus(r).status === 'PAID');
+  const totalPayableRupees = paidRegistrations.reduce((sum, r) => sum + (Number(r.value) || 0), 0);
 
   // Non-Bharat Play organizations do not have access to the registrations module
   if (!isBharatPlay(currentOrg)) {
@@ -363,6 +443,16 @@ export default function RegistrationsPage() {
           </div>
 
           <div className="flex items-center justify-between sm:justify-end space-x-2">
+            <select
+              value={paymentFilter}
+              onChange={(e) => setPaymentFilter(e.target.value as 'all' | 'paid' | 'unpaid')}
+              className="text-xs sm:text-sm px-2.5 py-2 rounded-lg border border-slate-200 bg-white font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400"
+            >
+              <option value="all">All Payments</option>
+              <option value="paid">Paid Only</option>
+              <option value="unpaid">Not Paid Only</option>
+            </select>
+
             {allSlots.length > 0 && (
               <select
                 value={slotFilter}
@@ -405,6 +495,7 @@ export default function RegistrationsPage() {
                 reg.title.split('(')[0]?.replace('Bharat Play:', '').trim() ||
                 'Guest';
 
+              const paymentInfo = extractPaymentStatus(reg);
               const screenshotUrl = extractScreenshotUrl(reg);
               const whatsappMsg = encodeURIComponent(
                 `Hi ${attendeeName}! We have your Bharat Play registration for ${members} (${slot}). Looking forward to seeing you!`
@@ -443,9 +534,16 @@ export default function RegistrationsPage() {
                       <div className="text-base font-extrabold text-slate-900">
                         ₹{Number(reg.value || 649).toLocaleString('en-IN')}
                       </div>
-                      <span className="inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                        {members}
-                      </span>
+                      <div className="flex items-center justify-end gap-1 mt-1">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                          {members}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${paymentInfo.badgeClass}`}
+                        >
+                          {paymentInfo.label}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -536,6 +634,7 @@ export default function RegistrationsPage() {
                   <th className="py-3 px-4">Members</th>
                   <th className="py-3 px-4">Slot</th>
                   <th className="py-3 px-4">Payable</th>
+                  <th className="py-3 px-4">Payment Status</th>
                   <th className="py-3 px-4">Payment Proof</th>
                   <th className="py-3 px-4">Date & Time (IST)</th>
                   <th className="py-3 px-4 text-right">Actions</th>
@@ -544,13 +643,13 @@ export default function RegistrationsPage() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-400 text-sm">
+                    <td colSpan={10} className="py-12 text-center text-slate-400 text-sm">
                       Loading registrations...
                     </td>
                   </tr>
                 ) : filteredRegistrations.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-14 text-center text-slate-400">
+                    <td colSpan={10} className="py-14 text-center text-slate-400">
                       <p className="text-base font-medium text-slate-700">No registrations found</p>
                       <p className="text-sm text-slate-400 mt-1">Attendee submissions will appear here automatically.</p>
                     </td>
@@ -564,6 +663,7 @@ export default function RegistrationsPage() {
                       reg.title.split('(')[0]?.replace('Bharat Play:', '').trim() ||
                       'Guest';
 
+                    const paymentInfo = extractPaymentStatus(reg);
                     const screenshotUrl = extractScreenshotUrl(reg);
 
                     const whatsappMsg = encodeURIComponent(
@@ -607,6 +707,16 @@ export default function RegistrationsPage() {
                         {/* Total Payable (Rupees) */}
                         <td className="py-3.5 px-4 font-bold text-slate-900">
                           ₹{Number(reg.value || 649).toLocaleString('en-IN')}
+                        </td>
+
+                        {/* Payment Status Column */}
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${paymentInfo.badgeClass}`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${paymentInfo.dotClass}`} />
+                            {paymentInfo.label}
+                          </span>
                         </td>
 
                         {/* Payment Proof / Screenshot */}
@@ -701,6 +811,7 @@ export default function RegistrationsPage() {
             'Guest';
 
           const screenshotUrl = extractScreenshotUrl(selectedReg);
+          const paymentInfo = extractPaymentStatus(selectedReg);
           const whatsappMsg = encodeURIComponent(
             `Hi ${attendeeName}! Confirming your Bharat Play registration for ${members} (${slot}). Looking forward to seeing you!`
           );
@@ -811,10 +922,10 @@ export default function RegistrationsPage() {
                     </div>
 
                     <div>
-                      <span className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wide block">Booking Status</span>
-                      <span className="inline-flex items-center space-x-1.5 text-xs sm:text-sm font-semibold text-emerald-700 mt-0.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
-                        <span>Confirmed</span>
+                      <span className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wide block">Payment Status</span>
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border mt-1 ${paymentInfo.badgeClass}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${paymentInfo.dotClass}`} />
+                        {paymentInfo.label}
                       </span>
                     </div>
                   </div>
