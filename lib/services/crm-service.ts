@@ -1,4 +1,5 @@
 import { createClient as createBrowserClient } from '../supabase/client';
+import { isSuperAdmin } from '../permissions';
 import {
   UserProfile,
   Organization,
@@ -29,6 +30,12 @@ export interface DashboardRecentRegistration {
     last_name?: string;
     email?: string;
   } | null;
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
+    logo_url?: string | null;
+  } | null;
 }
 
 export interface DashboardMetrics {
@@ -40,7 +47,19 @@ export interface DashboardMetrics {
   wonRevenue: number;
   recentActivities?: Activity[];
   recentRegistrations?: DashboardRecentRegistration[];
-  recentDeals?: { id: string; name: string; value: number; status: string; created_at: string }[];
+  recentDeals?: {
+    id: string;
+    name: string;
+    value: number;
+    status: string;
+    created_at: string;
+    organization?: {
+      id: string;
+      name: string;
+      slug: string;
+      logo_url?: string | null;
+    } | null;
+  }[];
   upcomingTasks: Task[];
   leadConversionRate: number;
 }
@@ -176,6 +195,7 @@ export const CRMService = {
     const supabase = createBrowserClient();
 
     // Auto-claim any pending invitations for this user's email on login / check
+    let cleanEmail: string | null = null;
     try {
       const { data: userProfile } = await supabase
         .from('profiles')
@@ -184,11 +204,12 @@ export const CRMService = {
         .maybeSingle();
 
       if (userProfile?.email) {
-        const cleanEmail = userProfile.email.toLowerCase().trim();
+        const targetEmail = userProfile.email.toLowerCase().trim();
+        cleanEmail = targetEmail;
         const { data: pendingInvs } = await supabase
           .from('organization_invitations')
           .select('*')
-          .ilike('email', cleanEmail)
+          .ilike('email', targetEmail)
           .eq('status', 'pending');
 
         if (pendingInvs && pendingInvs.length > 0) {
@@ -215,6 +236,55 @@ export const CRMService = {
       }
     } catch (claimErr) {
       console.warn('Auto-claim invitations notice:', claimErr);
+    }
+
+    // Super Admin check: Super Admins (e.g. arunkumar@vhan.co.in) have universal visibility
+    // and Owner-level oversight across every organization in the platform.
+    if (cleanEmail && isSuperAdmin(cleanEmail)) {
+      try {
+        const { data: allOrgs, error: allOrgsError } = await supabase
+          .from('organizations')
+          .select('*')
+          .order('name', { ascending: true });
+
+        if (allOrgs && allOrgs.length > 0) {
+          const { data: existingRows } = await supabase
+            .from('organization_members')
+            .select('organization_id, role, status')
+            .eq('user_id', userId);
+
+          const existingOrgIds = new Set((existingRows || []).map((r: any) => r.organization_id));
+
+          // Auto-link any organizations in DB where Arunkumar doesn't have an approved row yet
+          for (const org of allOrgs) {
+            if (!existingOrgIds.has(org.id)) {
+              try {
+                await supabase.from('organization_members').upsert(
+                  {
+                    organization_id: org.id,
+                    user_id: userId,
+                    role: 'Owner',
+                    status: 'approved',
+                    joined_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  },
+                  { onConflict: 'user_id,organization_id' }
+                );
+              } catch (e) {
+                // Ignore constraint failure
+              }
+            }
+          }
+
+          return allOrgs.map((org: any) => ({
+            organization: org as Organization,
+            role: 'Owner' as MemberRole,
+            status: 'approved' as MemberStatus,
+          }));
+        }
+      } catch (superAdminErr) {
+        console.error('Error in Super Admin multi-org loader:', superAdminErr);
+      }
     }
 
     const { data, error } = await supabase
@@ -253,7 +323,21 @@ export const CRMService = {
     }
   ): Promise<{ organization: Organization; member: OrganizationMember }> => {
     const supabase = createBrowserClient();
-    const cleanSlug = params.slug.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    let cleanSlug = params.slug.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    if (!cleanSlug) {
+      cleanSlug = `org-${Math.random().toString(36).substring(2, 8)}`;
+    }
+
+    // Ensure slug uniqueness across many organizations
+    const { data: existingSlug } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('slug', cleanSlug)
+      .maybeSingle();
+
+    if (existingSlug) {
+      cleanSlug = `${cleanSlug}-${Math.random().toString(36).substring(2, 6)}`;
+    }
 
     const { data: org, error: orgError } = await supabase
       .from('organizations')
@@ -341,27 +425,53 @@ export const CRMService = {
   },
 
   // 3. Organization Members Management
-  getOrganizationMembers: async (orgId: string): Promise<OrganizationMember[]> => {
+  getOrganizationMembers: async (orgId: string | string[]): Promise<OrganizationMember[]> => {
+    const isArray = Array.isArray(orgId);
+    if (isArray && orgId.length === 0) return [];
+
     const supabase = createBrowserClient();
-    const { data, error } = await supabase
+    let query = supabase
       .from('organization_members')
       .select(`
         *,
+        organization:organizations (*),
         user:profiles!organization_members_user_id_fkey (*)
       `)
-      .eq('organization_id', orgId)
       .order('created_at', { ascending: true });
+
+    if (isArray) {
+      if (orgId.length === 1) {
+        query = query.eq('organization_id', orgId[0]);
+      } else {
+        query = query.in('organization_id', orgId);
+      }
+    } else {
+      query = query.eq('organization_id', orgId);
+    }
+
+    const { data, error } = await query;
 
     if (!error && data) {
       return data as OrganizationMember[];
     }
 
     // Resilient fallback: fetch members and profiles separately
-    const { data: members, error: mErr } = await supabase
+    let fallbackQuery = supabase
       .from('organization_members')
-      .select('*')
-      .eq('organization_id', orgId)
+      .select('*, organization:organizations(*)')
       .order('created_at', { ascending: true });
+
+    if (isArray) {
+      if (orgId.length === 1) {
+        fallbackQuery = fallbackQuery.eq('organization_id', orgId[0]);
+      } else {
+        fallbackQuery = fallbackQuery.in('organization_id', orgId);
+      }
+    } else {
+      fallbackQuery = fallbackQuery.eq('organization_id', orgId);
+    }
+
+    const { data: members, error: mErr } = await fallbackQuery;
 
     if (mErr || !members) return [];
 
@@ -779,13 +889,75 @@ export const CRMService = {
     if (error) throw new Error(error.message);
   },
 
-  // 6. CRM Isolated Data Modules (Filtered strictly by organization_id)
-  getDashboardMetrics: async (orgId: string): Promise<DashboardMetrics> => {
-    const cacheKey = `metrics_${orgId}`;
+  // 6. CRM Isolated Data Modules (Filtered by organization_id or multiple organization_ids for Super Admin)
+  getDashboardMetrics: async (orgId: string | string[]): Promise<DashboardMetrics> => {
+    const isArray = Array.isArray(orgId);
+    if (isArray && orgId.length === 0) {
+      return {
+        totalContacts: 0,
+        totalLeads: 0,
+        openDeals: 0,
+        closedDeals: 0,
+        pipelineRevenue: 0,
+        wonRevenue: 0,
+        recentActivities: [],
+        recentRegistrations: [],
+        recentDeals: [],
+        upcomingTasks: [],
+        leadConversionRate: 0,
+      };
+    }
+
+    const cacheKey = isArray ? `metrics_${orgId.slice().sort().join(',')}` : `metrics_${orgId}`;
     const cached = getCached<DashboardMetrics>(cacheKey);
     if (cached) return cached;
 
     const supabase = createBrowserClient();
+
+    let contactsQ = supabase.from('contacts').select('*', { count: 'exact', head: true });
+    let leadsQ = supabase.from('leads').select('id, status');
+    let dealsQ = supabase.from('deals').select('id, value, status');
+    let tasksQ = supabase
+      .from('tasks')
+      .select('*, organization:organizations (id, name, slug, logo_url)')
+      .neq('status', 'completed')
+      .order('created_at', { ascending: false })
+      .limit(6);
+    let regQ = supabase
+      .from('leads')
+      .select('id, title, value, status, source, created_at, organization:organizations (id, name, slug, logo_url), contact:converted_contact_id(first_name, last_name, email)')
+      .order('created_at', { ascending: false })
+      .limit(6);
+    let recentDealsQ = supabase
+      .from('deals')
+      .select('id, title, value, status, created_at, organization:organizations (id, name, slug, logo_url)')
+      .order('created_at', { ascending: false })
+      .limit(6);
+
+    if (isArray) {
+      if (orgId.length === 1) {
+        contactsQ = contactsQ.eq('organization_id', orgId[0]);
+        leadsQ = leadsQ.eq('organization_id', orgId[0]);
+        dealsQ = dealsQ.eq('organization_id', orgId[0]);
+        tasksQ = tasksQ.eq('organization_id', orgId[0]);
+        regQ = regQ.eq('organization_id', orgId[0]);
+        recentDealsQ = recentDealsQ.eq('organization_id', orgId[0]);
+      } else {
+        contactsQ = contactsQ.in('organization_id', orgId);
+        leadsQ = leadsQ.in('organization_id', orgId);
+        dealsQ = dealsQ.in('organization_id', orgId);
+        tasksQ = tasksQ.in('organization_id', orgId);
+        regQ = regQ.in('organization_id', orgId);
+        recentDealsQ = recentDealsQ.in('organization_id', orgId);
+      }
+    } else {
+      contactsQ = contactsQ.eq('organization_id', orgId);
+      leadsQ = leadsQ.eq('organization_id', orgId);
+      dealsQ = dealsQ.eq('organization_id', orgId);
+      tasksQ = tasksQ.eq('organization_id', orgId);
+      regQ = regQ.eq('organization_id', orgId);
+      recentDealsQ = recentDealsQ.eq('organization_id', orgId);
+    }
 
     const [
       { count: totalContacts },
@@ -795,12 +967,12 @@ export const CRMService = {
       { data: recentRegistrationsData },
       { data: recentDealsData },
     ] = await Promise.all([
-      supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('organization_id', orgId),
-      supabase.from('leads').select('id, status').eq('organization_id', orgId),
-      supabase.from('deals').select('id, value, status').eq('organization_id', orgId),
-      supabase.from('tasks').select('*').eq('organization_id', orgId).neq('status', 'completed').order('created_at', { ascending: false }).limit(5),
-      supabase.from('leads').select('id, title, value, status, source, created_at, contact:converted_contact_id(first_name, last_name, email)').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(5),
-      supabase.from('deals').select('id, name, value, status, created_at').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(5),
+      contactsQ,
+      leadsQ,
+      dealsQ,
+      tasksQ,
+      regQ,
+      recentDealsQ,
     ]);
 
     const leads = leadsData || [];
@@ -824,7 +996,10 @@ export const CRMService = {
       wonRevenue,
       recentActivities: [],
       recentRegistrations: (recentRegistrationsData || []) as any,
-      recentDeals: (recentDealsData || []) as any,
+      recentDeals: (recentDealsData || []).map((d: any) => ({
+        ...d,
+        name: d.title || d.name, // Support both title and name
+      })) as any,
       upcomingTasks: (tasksData || []) as Task[],
       leadConversionRate: conversionRate,
     };
@@ -833,10 +1008,13 @@ export const CRMService = {
     return result;
   },
 
-  // Contacts
-  getContacts: async (orgId: string, search?: string, statusFilter?: string): Promise<Contact[]> => {
+  // Contacts - Supports single or multi-organization querying
+  getContacts: async (orgId: string | string[], search?: string, statusFilter?: string): Promise<Contact[]> => {
+    const isArray = Array.isArray(orgId);
+    if (isArray && orgId.length === 0) return [];
+
     const isDefaultQuery = !search?.trim() && (!statusFilter || statusFilter === 'all');
-    const cacheKey = `contacts_${orgId}`;
+    const cacheKey = isArray ? `contacts_${orgId.slice().sort().join(',')}` : `contacts_${orgId}`;
     if (isDefaultQuery) {
       const cached = getCached<Contact[]>(cacheKey);
       if (cached) return cached;
@@ -845,9 +1023,21 @@ export const CRMService = {
     const supabase = createBrowserClient();
     let query = supabase
       .from('contacts')
-      .select('*')
-      .eq('organization_id', orgId)
+      .select(`
+        *,
+        organization:organizations (id, name, slug, logo_url)
+      `)
       .order('created_at', { ascending: false });
+
+    if (isArray) {
+      if (orgId.length === 1) {
+        query = query.eq('organization_id', orgId[0]);
+      } else {
+        query = query.in('organization_id', orgId);
+      }
+    } else {
+      query = query.eq('organization_id', orgId);
+    }
 
     if (statusFilter && statusFilter !== 'all') {
       query = query.eq('status', statusFilter);
@@ -937,10 +1127,17 @@ export const CRMService = {
     if (error) throw new Error(error.message);
   },
 
-  // Leads
-  getLeads: async (orgId: string, search?: string, statusFilter?: string): Promise<Lead[]> => {
+  // Leads - Supports single organization ID or multiple organization IDs (for Super Admin multi-org view)
+  getLeads: async (
+    orgId: string | string[],
+    search?: string,
+    statusFilter?: string
+  ): Promise<Lead[]> => {
+    const isArray = Array.isArray(orgId);
+    if (isArray && orgId.length === 0) return [];
+
     const isDefaultQuery = !search?.trim() && (!statusFilter || statusFilter === 'all');
-    const cacheKey = `leads_${orgId}`;
+    const cacheKey = isArray ? `leads_multi_${orgId.slice().sort().join(',')}` : `leads_${orgId}`;
     if (isDefaultQuery) {
       const cached = getCached<Lead[]>(cacheKey);
       if (cached) return cached;
@@ -949,9 +1146,21 @@ export const CRMService = {
     const supabase = createBrowserClient();
     let query = supabase
       .from('leads')
-      .select('*')
-      .eq('organization_id', orgId)
+      .select(`
+        *,
+        organization:organizations (id, name, slug, logo_url)
+      `)
       .order('created_at', { ascending: false });
+
+    if (isArray) {
+      if (orgId.length === 1) {
+        query = query.eq('organization_id', orgId[0]);
+      } else {
+        query = query.in('organization_id', orgId);
+      }
+    } else {
+      query = query.eq('organization_id', orgId);
+    }
 
     if (statusFilter && statusFilter !== 'all') {
       query = query.eq('status', statusFilter);
@@ -1158,21 +1367,36 @@ export const CRMService = {
     return result;
   },
 
-  getDeals: async (orgId: string): Promise<Deal[]> => {
-    const cacheKey = `deals_${orgId}`;
+  getDeals: async (orgId: string | string[]): Promise<Deal[]> => {
+    const isArray = Array.isArray(orgId);
+    if (isArray && orgId.length === 0) return [];
+
+    const cacheKey = isArray ? `deals_${orgId.slice().sort().join(',')}` : `deals_${orgId}`;
     const cached = getCached<Deal[]>(cacheKey);
     if (cached) return cached;
 
     const supabase = createBrowserClient();
-    const { data, error } = await supabase
+    let query = supabase
       .from('deals')
       .select(`
         *,
+        organization:organizations (id, name, slug, logo_url),
         contact:contacts (*),
         stage:pipeline_stages (*)
       `)
-      .eq('organization_id', orgId)
       .order('created_at', { ascending: false });
+
+    if (isArray) {
+      if (orgId.length === 1) {
+        query = query.eq('organization_id', orgId[0]);
+      } else {
+        query = query.in('organization_id', orgId);
+      }
+    } else {
+      query = query.eq('organization_id', orgId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching deals:', error);
@@ -1221,7 +1445,12 @@ export const CRMService = {
       .select()
       .single();
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (error.message?.includes('deals_status_check') || error.message?.includes('check constraint')) {
+        throw new Error("To enable 'inactive' status in Supabase, execute: ALTER TABLE public.deals DROP CONSTRAINT IF EXISTS deals_status_check; ALTER TABLE public.deals ADD CONSTRAINT deals_status_check CHECK (status IN ('open', 'won', 'lost', 'inactive'));");
+      }
+      throw new Error(error.message);
+    }
     return data as Deal;
   },
 
@@ -1237,9 +1466,12 @@ export const CRMService = {
     if (error) throw new Error(error.message);
   },
 
-  // Tasks
-  getTasks: async (orgId: string, filter?: string): Promise<Task[]> => {
-    const cacheKey = `tasks_${orgId}_${filter || 'all'}`;
+  // Tasks - Supports single or multi-organization querying
+  getTasks: async (orgId: string | string[], filter?: string): Promise<Task[]> => {
+    const isArray = Array.isArray(orgId);
+    if (isArray && orgId.length === 0) return [];
+
+    const cacheKey = isArray ? `tasks_${orgId.slice().sort().join(',')}_${filter || 'all'}` : `tasks_${orgId}_${filter || 'all'}`;
     const cached = getCached<Task[]>(cacheKey);
     if (cached) return cached;
 
@@ -1248,10 +1480,20 @@ export const CRMService = {
       .from('tasks')
       .select(`
         *,
+        organization:organizations (id, name, slug, logo_url),
         assignee:profiles!tasks_assigned_to_fkey (*)
       `)
-      .eq('organization_id', orgId)
       .order('created_at', { ascending: false });
+
+    if (isArray) {
+      if (orgId.length === 1) {
+        query = query.eq('organization_id', orgId[0]);
+      } else {
+        query = query.in('organization_id', orgId);
+      }
+    } else {
+      query = query.eq('organization_id', orgId);
+    }
 
     if (filter === 'completed') {
       query = query.eq('status', 'completed');
@@ -1269,9 +1511,18 @@ export const CRMService = {
     // Fallback: fetch tasks and profiles separately to avoid ambiguous embedding error
     let fallbackQuery = supabase
       .from('tasks')
-      .select('*')
-      .eq('organization_id', orgId)
+      .select('*, organization:organizations (id, name, slug, logo_url)')
       .order('created_at', { ascending: false });
+
+    if (isArray) {
+      if (orgId.length === 1) {
+        fallbackQuery = fallbackQuery.eq('organization_id', orgId[0]);
+      } else {
+        fallbackQuery = fallbackQuery.in('organization_id', orgId);
+      }
+    } else {
+      fallbackQuery = fallbackQuery.eq('organization_id', orgId);
+    }
 
     if (filter === 'completed') {
       fallbackQuery = fallbackQuery.eq('status', 'completed');

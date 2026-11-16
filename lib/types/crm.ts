@@ -76,6 +76,12 @@ export interface OrganizationJoinRequest {
 export interface Contact {
   id: string;
   organization_id: string;
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
+    logo_url?: string | null;
+  };
   first_name: string;
   last_name: string;
   email: string | null;
@@ -94,6 +100,12 @@ export interface Contact {
 export interface Lead {
   id: string;
   organization_id: string;
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
+    logo_url?: string | null;
+  };
   title: string;
   first_name: string | null;
   last_name: string | null;
@@ -138,13 +150,21 @@ export interface PipelineStage {
 export interface Deal {
   id: string;
   organization_id: string;
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
+    logo_url?: string | null;
+  };
   pipeline_id: string;
   stage_id: string;
   contact_id: string | null;
   title: string;
   value: number;
   expected_close_date: string | null;
-  status: 'open' | 'won' | 'lost';
+  status: 'open' | 'won' | 'lost' | 'inactive';
+  lost_reason?: string | null;
+  inactive_reason?: string | null;
   owner_id: string | null;
   created_by: string | null;
   created_at: string;
@@ -157,6 +177,12 @@ export interface Deal {
 export interface Task {
   id: string;
   organization_id: string;
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
+    logo_url?: string | null;
+  };
   title: string;
   description: string | null;
   due_date: string | null;
@@ -174,6 +200,12 @@ export interface Task {
 export interface Activity {
   id: string;
   organization_id: string;
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
+    logo_url?: string | null;
+  };
   type: 'note' | 'call' | 'meeting' | 'follow_up' | 'email';
   title: string;
   description: string | null;

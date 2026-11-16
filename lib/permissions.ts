@@ -113,12 +113,17 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission[]> = {
 /**
  * Checks if a role and membership status has a specific permission.
  * Suspended, pending, rejected, or revoked members have NO permissions.
+ * Super Admins automatically bypass role restrictions.
  */
 export function hasPermission(
   role: MemberRole | null | undefined,
   status: MemberStatus | null | undefined,
-  permission: Permission
+  permission: Permission,
+  user?: { email?: string | null } | string | null
 ): boolean {
+  if (user && isSuperAdmin(user)) {
+    return true;
+  }
   if (!role || status !== 'approved') {
     return false;
   }
@@ -132,17 +137,39 @@ export function hasPermission(
 export function hasAnyRole(
   role: MemberRole | null | undefined,
   status: MemberStatus | null | undefined,
-  allowedRoles: MemberRole[]
+  allowedRoles: MemberRole[],
+  user?: { email?: string | null } | string | null
 ): boolean {
+  if (user && isSuperAdmin(user)) return true;
   if (!role || status !== 'approved') return false;
   return allowedRoles.includes(role);
 }
 
 /**
+ * Super Admin accounts that possess multi-organization visibility and global management access.
+ */
+export const SUPER_ADMIN_EMAILS: string[] = ['arunkumar@vhan.co.in'];
+
+/**
+ * Checks if a user profile, user object, or email belongs to a Super Admin.
+ */
+export function isSuperAdmin(user?: { email?: string | null } | string | null): boolean {
+  if (!user) return false;
+  const email = typeof user === 'string' ? user : user.email;
+  if (!email) return false;
+  return SUPER_ADMIN_EMAILS.some((adminEmail) => adminEmail.toLowerCase() === email.toLowerCase().trim());
+}
+
+/**
  * Checks if a user is an Owner or Admin
  */
-export function isOrgAdmin(role: MemberRole | null | undefined, status: MemberStatus | null | undefined): boolean {
-  return hasAnyRole(role, status, ['Owner', 'Admin']);
+export function isOrgAdmin(
+  role: MemberRole | null | undefined,
+  status: MemberStatus | null | undefined,
+  user?: { email?: string | null } | string | null
+): boolean {
+  if (user && isSuperAdmin(user)) return true;
+  return hasAnyRole(role, status, ['Owner', 'Admin'], user);
 }
 
 /**

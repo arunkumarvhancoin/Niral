@@ -48,29 +48,29 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const sidebarContent = (
     <>
       {/* Niral Brand Header */}
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100">
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#E7EAF0]">
         <div className="flex items-center space-x-2.5">
-          <img src="/niral-icon.png" alt="Niral" className="w-8 h-8 object-contain flex-shrink-0" />
-          <img src="/niral-wordmark.png" alt="NIRAL" className="h-4 w-auto object-contain" />
+          <img src="/niral-icon.png" alt="Niral" className="w-7 h-7 object-contain flex-shrink-0" />
+          <img src="/niral-wordmark.png" alt="NIRAL" className="h-3.5 w-auto object-contain" />
         </div>
         {onMobileClose && (
           <button
             onClick={onMobileClose}
-            className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="md:hidden p-1.5 rounded-md text-[#697386] hover:text-[#171B26] hover:bg-[#F1F3F7] transition-colors"
             aria-label="Close menu"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         )}
       </div>
 
       {/* Workspace Switcher Header */}
-      <div className="p-3 border-b border-slate-200/80">
+      <div className="p-2.5 border-b border-[#E7EAF0]">
         <OrganizationSwitcher />
       </div>
 
       {/* Navigation Items */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
+      <div className="flex-1 overflow-y-auto px-2.5 py-2.5 space-y-0.5">
         {navigation.map((item) => {
           const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
           return (
@@ -78,13 +78,13 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
               key={item.name}
               href={item.href}
               onClick={() => onMobileClose?.()}
-              className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center space-x-2.5 px-2.5 py-2 rounded-md text-[13px] transition-colors ${
                 isActive
-                  ? 'bg-primary-50 text-primary-700 font-semibold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  ? 'bg-[#F0F4FE] text-[#3659C9] font-medium shadow-[0_1px_2px_rgba(54,89,201,0.08)]'
+                  : 'text-[#4A5568] hover:text-[#171B26] hover:bg-[#F1F3F7] font-normal'
               }`}
             >
-              <item.icon className={`w-4 h-4 transition-colors ${isActive ? 'text-primary-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+              <item.icon className={`w-4 h-4 transition-colors flex-shrink-0 ${isActive ? 'text-[#3659C9]' : 'text-[#697386]'}`} />
               <span>{item.name}</span>
             </Link>
           );
@@ -92,29 +92,29 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
       </div>
 
       {/* Footer / User Account docked at the absolute bottom */}
-      <div className="p-3 border-t border-slate-200/80 bg-white mt-auto">
+      <div className="p-3 border-t border-[#E7EAF0] bg-white mt-auto">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary-600 to-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-xs flex-shrink-0">
+            <div className="w-7 h-7 rounded-full bg-[#E2EAFA] text-[#3659C9] flex items-center justify-center text-xs font-semibold flex-shrink-0">
               {currentUser?.email?.[0]?.toUpperCase() || 'U'}
             </div>
             <div className="truncate">
-              <p className="text-xs font-semibold text-slate-800 truncate leading-tight">
+              <p className="text-[13px] font-medium text-[#171B26] truncate leading-tight">
                 {currentUser?.full_name || currentUser?.email?.split('@')[0] || 'User'}
               </p>
               <div className="flex items-center space-x-1.5 mt-0.5">
-                <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.2 rounded border ${
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${
                   currentRole === 'Owner'
-                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                    ? 'bg-[#F5F3FF] text-[#5B21B6] border-[#DDD6FE]'
                     : currentRole === 'Admin'
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    ? 'bg-[#EFF6FF] text-[#1D4ED8] border-[#BFDBFE]'
                     : currentRole === 'Manager'
-                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                    ? 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]'
+                    : 'bg-[#F7F8FA] text-[#697386] border-[#E7EAF0]'
                 }`}>
                   {currentRole || 'Owner'}
                 </span>
-                <span className="text-[11px] text-slate-400 truncate max-w-[90px]">
+                <span className="text-[11px] text-[#697386] truncate max-w-[90px]">
                   {currentUser?.email}
                 </span>
               </div>
@@ -122,7 +122,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
           </div>
           <button
             onClick={signOut}
-            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors ml-1"
+            className="p-1.5 text-[#697386] hover:text-[#B91C1C] hover:bg-[#FEF2F2] rounded-md transition-colors ml-1"
             title="Sign Out"
           >
             <LogOut className="w-4 h-4" />
@@ -135,7 +135,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   return (
     <>
       {/* Desktop Persistent Sidebar */}
-      <aside className="hidden md:flex w-64 border-r border-slate-200/80 bg-white flex-col h-screen sticky top-0 select-none flex-shrink-0 z-20">
+      <aside className="hidden md:flex w-64 border-r border-[#E7EAF0] bg-white flex-col h-screen sticky top-0 select-none flex-shrink-0 z-20">
         {sidebarContent}
       </aside>
 

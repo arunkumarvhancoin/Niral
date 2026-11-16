@@ -136,12 +136,12 @@ export function LogoUpload({ value, onChange, disabled = false, label = 'Organiz
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label className="block text-xs font-semibold text-slate-700">{label}</label>
+        <label className="block text-[12px] font-medium text-[#171B26]">{label}</label>
         {!disabled && (
           <button
             type="button"
             onClick={() => setIsUrlMode(!isUrlMode)}
-            className="text-[11px] font-medium text-primary-600 hover:text-primary-700 transition-colors flex items-center space-x-1"
+            className="text-[11px] font-medium text-[#3659C9] hover:text-[#2B47A1] transition-colors flex items-center space-x-1"
           >
             {isUrlMode ? (
               <>
@@ -177,49 +177,49 @@ export function LogoUpload({ value, onChange, disabled = false, label = 'Organiz
             placeholder="https://example.com/logo.png"
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
-            className="flex-1 text-xs rounded-lg border border-slate-300 p-2.5 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+            className="flex-1 text-[13px] rounded-md border border-[#E7EAF0] p-2 bg-white text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9]"
           />
           <button
             type="button"
             onClick={handleApplyUrl}
             disabled={disabled || !urlInput.trim()}
-            className="px-3 py-2.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors disabled:opacity-50"
+            className="px-3 py-2 text-[13px] font-medium text-white bg-[#3659C9] hover:bg-[#2B47A1] rounded-md transition-colors disabled:opacity-50"
           >
             Apply
           </button>
           <button
             type="button"
             onClick={() => setIsUrlMode(false)}
-            className="px-2.5 py-2.5 text-xs font-medium text-slate-500 hover:text-slate-700"
+            className="px-2.5 py-2 text-[13px] font-medium text-[#697386] hover:text-[#171B26]"
           >
             Cancel
           </button>
         </div>
       ) : value ? (
         /* Preview Mode (when logo exists) */
-        <div className="flex items-center space-x-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-          <div className="w-14 h-14 rounded-xl bg-white border border-slate-200/90 shadow-xs flex items-center justify-center overflow-hidden flex-shrink-0">
+        <div className="flex items-center space-x-3.5 p-3 bg-white rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+          <div className="w-12 h-12 rounded-md bg-[#F7F8FA] border border-[#E7EAF0] flex items-center justify-center overflow-hidden flex-shrink-0">
             <img src={value} alt="Logo preview" className="w-full h-full object-contain p-1" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-slate-800">Current Logo</p>
-            <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+            <p className="text-[13px] font-medium text-[#171B26]">Current Logo</p>
+            <p className="text-[11px] text-[#697386] mt-0.5 truncate">
               {value.startsWith('data:') ? 'Custom uploaded file' : value}
             </p>
             {!disabled && (
-              <div className="flex items-center space-x-2 mt-2">
+              <div className="flex items-center space-x-2 mt-1.5">
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="text-[11px] font-semibold text-primary-600 hover:text-primary-700 transition-colors"
+                  className="text-[11px] font-medium text-[#3659C9] hover:underline transition-colors"
                 >
                   Change image
                 </button>
-                <span className="text-slate-300">&bull;</span>
+                <span className="text-[#9AA2B1]">&bull;</span>
                 <button
                   type="button"
                   onClick={handleClear}
-                  className="text-[11px] font-medium text-rose-600 hover:text-rose-700 transition-colors"
+                  className="text-[11px] font-medium text-[#B91C1C] hover:underline transition-colors"
                 >
                   Remove
                 </button>
@@ -235,26 +235,26 @@ export function LogoUpload({ value, onChange, disabled = false, label = 'Organiz
           onDragOver={handleDrag}
           onDrop={handleDrop}
           onClick={() => !disabled && fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all ${
+          className={`border border-dashed rounded-lg p-5 text-center cursor-pointer transition-all ${
             dragActive
-              ? 'border-primary-500 bg-primary-50/50'
-              : 'border-slate-300 hover:border-primary-400 hover:bg-slate-50/50'
+              ? 'border-[#3659C9] bg-[#F0F4FE]'
+              : 'border-[#E7EAF0] hover:border-[#BAC0CE] hover:bg-[#F7F8FA]'
           } ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
         >
           {isProcessing ? (
             <div className="py-2 flex flex-col items-center justify-center space-y-1.5">
-              <Loader2 className="w-6 h-6 text-primary-600 animate-spin" />
-              <p className="text-xs font-medium text-slate-600">Processing logo image...</p>
+              <Loader2 className="w-5 h-5 text-[#3659C9] animate-spin" />
+              <p className="text-[12px] font-medium text-[#697386]">Processing logo image...</p>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center space-y-1.5">
-              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                <Upload className="w-5 h-5 text-slate-500" />
+            <div className="flex flex-col items-center justify-center space-y-1">
+              <div className="w-8 h-8 rounded-md bg-[#F1F3F7] flex items-center justify-center text-[#697386] mb-1">
+                <Upload className="w-4 h-4" />
               </div>
-              <p className="text-xs font-semibold text-slate-800">
-                <span className="text-primary-600 hover:underline">Click to upload logo</span> or drag and drop
+              <p className="text-[12px] font-medium text-[#171B26]">
+                <span className="text-[#3659C9] hover:underline">Click to upload logo</span> or drag and drop
               </p>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-[#697386]">
                 PNG, JPG, WebP or SVG (max. 5MB)
               </p>
             </div>

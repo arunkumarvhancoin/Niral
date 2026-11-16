@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { CRMService, invalidateCRMCache } from '../../lib/services/crm-service';
 import { useOrganizationStore } from '../../lib/stores/organization-store';
 import { UserProfile, Organization, MemberRole, MemberStatus } from '../../lib/types/crm';
+import { isSuperAdmin } from '../../lib/permissions';
 import { useRouter, usePathname } from 'next/navigation';
 import { createClient } from '../../lib/supabase/client';
 
@@ -20,6 +21,17 @@ interface WorkspaceContextType {
   switchOrganization: (orgId: string) => Promise<void>;
   refreshWorkspace: (silent?: boolean, preferredOrgId?: string) => Promise<void>;
   signOut: () => Promise<void>;
+
+  // Super Admin Multi-Organization Oversight
+  isSuperAdmin: boolean;
+  selectedOrgIds: string[];
+  effectiveOrgIds: string[];
+  isAllOrgsSelected: boolean;
+  isMultiOrgActive: boolean;
+  setSelectedOrgIds: (ids: string[]) => void;
+  toggleOrgSelection: (orgId: string) => void;
+  selectAllOrgs: () => void;
+  selectCurrentOrgOnly: () => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -60,10 +72,85 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [isSwitchingOrg, setIsSwitchingOrg] = useState(false);
   const [switchingOrgName, setSwitchingOrgName] = useState<string | null>(null);
 
+  // Super Admin Multi-Organization Oversight
+  const isSuper = isSuperAdmin(currentUser);
+
+  const [selectedOrgIds, setSelectedOrgIdsState] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('crm_super_admin_selected_orgs');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return [];
+  });
+
+  const setSelectedOrgIds = useCallback((ids: string[]) => {
+    setSelectedOrgIdsState(ids);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('crm_super_admin_selected_orgs', JSON.stringify(ids));
+      } catch {}
+    }
+  }, []);
+
+  const approvedMemberships = memberships.filter((m) => m.status === 'approved');
+
+  // If Super Admin has no selection saved, auto-select all organizations
+  useEffect(() => {
+    if (isSuper && approvedMemberships.length > 0 && selectedOrgIds.length === 0) {
+      setSelectedOrgIds(approvedMemberships.map((m) => m.organization.id));
+    }
+  }, [isSuper, approvedMemberships.length, selectedOrgIds.length, setSelectedOrgIds]);
+
+  const effectiveOrgIds = isSuper
+    ? selectedOrgIds.length > 0
+      ? selectedOrgIds
+      : currentOrg?.id
+      ? [currentOrg.id]
+      : []
+    : currentOrg?.id
+    ? [currentOrg.id]
+    : [];
+
+  const isAllOrgsSelected = isSuper && approvedMemberships.length > 0 && selectedOrgIds.length === approvedMemberships.length;
+  const isMultiOrgActive = isSuper && (selectedOrgIds.length > 1 || (selectedOrgIds.length === 1 && selectedOrgIds[0] !== currentOrg?.id));
+
+  const toggleOrgSelection = useCallback((orgId: string) => {
+    setSelectedOrgIdsState((prev) => {
+      let next: string[];
+      if (prev.includes(orgId)) {
+        if (prev.length === 1) return prev;
+        next = prev.filter((id) => id !== orgId);
+      } else {
+        next = [...prev, orgId];
+      }
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('crm_super_admin_selected_orgs', JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+  }, []);
+
+  const selectAllOrgs = useCallback(() => {
+    const allIds = approvedMemberships.map((m) => m.organization.id);
+    setSelectedOrgIds(allIds);
+  }, [approvedMemberships, setSelectedOrgIds]);
+
+  const selectCurrentOrgOnly = useCallback(() => {
+    if (currentOrg?.id) {
+      setSelectedOrgIds([currentOrg.id]);
+    }
+  }, [currentOrg?.id, setSelectedOrgIds]);
+
   const router = useRouter();
   const pathname = usePathname();
   const pathnameRef = React.useRef(pathname);
-  pathnameRef.current = pathname;
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
 
   const refreshWorkspace = useCallback(async (silent: boolean = false, preferredOrgId?: string) => {
     try {
@@ -233,6 +320,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         switchOrganization,
         refreshWorkspace,
         signOut,
+        // Super Admin Multi-Org Oversight
+        isSuperAdmin: isSuper,
+        selectedOrgIds,
+        effectiveOrgIds,
+        isAllOrgsSelected,
+        isMultiOrgActive,
+        setSelectedOrgIds,
+        toggleOrgSelection,
+        selectAllOrgs,
+        selectCurrentOrgOnly,
       }}
     >
       {children}

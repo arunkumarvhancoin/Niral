@@ -11,6 +11,8 @@ import {
   Briefcase,
   ExternalLink,
   Loader2,
+  Search,
+  X,
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { LogoUpload } from '../../components/ui/logo-upload';
@@ -24,6 +26,7 @@ function OnboardingContent() {
   const [step, setStep] = useState<'select' | 'create'>(initialStep);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectingOrgId, setSelectingOrgId] = useState<string | null>(null);
+  const [filterQuery, setFilterQuery] = useState('');
   const router = useRouter();
 
   // Create Form State
@@ -38,6 +41,16 @@ function OnboardingContent() {
   });
 
   const approvedMemberships = memberships.filter((m) => m.status === 'approved');
+  const filteredApprovedMemberships = approvedMemberships.filter((m) => {
+    if (!filterQuery.trim()) return true;
+    const q = filterQuery.toLowerCase().trim();
+    return (
+      m.organization.name.toLowerCase().includes(q) ||
+      (m.organization.slug && m.organization.slug.toLowerCase().includes(q)) ||
+      m.role.toLowerCase().includes(q) ||
+      (m.organization.industry && m.organization.industry.toLowerCase().includes(q))
+    );
+  });
 
   const handleSelectOrg = async (orgId: string) => {
     setSelectingOrgId(orgId);
@@ -107,6 +120,28 @@ function OnboardingContent() {
               </h2>
             </div>
 
+            {approvedMemberships.length > 2 && (
+              <div className="relative mb-3 flex items-center">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+                <input
+                  type="text"
+                  value={filterQuery}
+                  onChange={(e) => setFilterQuery(e.target.value)}
+                  placeholder="Search joined organizations..."
+                  className="w-full pl-10 pr-9 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-primary-500 focus:bg-white transition-colors"
+                />
+                {filterQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setFilterQuery('')}
+                    className="absolute right-3 text-slate-400 hover:text-slate-600 p-0.5"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
             {approvedMemberships.length === 0 ? (
               <div className="p-6 text-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50">
                 <Briefcase className="w-8 h-8 text-slate-300 mx-auto mb-2" />
@@ -115,9 +150,20 @@ function OnboardingContent() {
                   Create your first organization below to launch your CRM workspace.
                 </p>
               </div>
+            ) : filteredApprovedMemberships.length === 0 ? (
+              <div className="p-6 text-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50">
+                <p className="text-sm font-semibold text-slate-700">No organizations matching &quot;{filterQuery}&quot;</p>
+                <button
+                  type="button"
+                  onClick={() => setFilterQuery('')}
+                  className="text-xs text-primary-600 font-medium hover:underline mt-1"
+                >
+                  Clear search
+                </button>
+              </div>
             ) : (
-              <div className="space-y-3">
-                {approvedMemberships.map((item) => (
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                {filteredApprovedMemberships.map((item) => (
                   <div
                     key={item.organization.id}
                     onClick={() => handleSelectOrg(item.organization.id)}

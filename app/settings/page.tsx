@@ -247,21 +247,21 @@ export default function SettingsPage() {
       <div className="max-w-4xl space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Settings</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <h1 className="text-xl font-semibold tracking-tight text-[#171B26]">Settings</h1>
+          <p className="text-[13px] text-[#697386] mt-0.5">
             Manage your personal profile, security credentials, and organization preferences.
           </p>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="border-b border-slate-200">
+        <div className="border-b border-[#E7EAF0]">
           <nav className="flex space-x-6 sm:space-x-8">
             <button
               onClick={() => setActiveTab('personal')}
-              className={`py-3 px-1 border-b-2 text-sm font-semibold transition-colors flex items-center space-x-2 ${
+              className={`py-2.5 px-1 border-b-2 text-[13px] font-medium transition-colors flex items-center space-x-2 ${
                 activeTab === 'personal'
-                  ? 'border-primary-600 text-primary-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
+                  ? 'border-[#3659C9] text-[#3659C9] font-semibold'
+                  : 'border-transparent text-[#697386] hover:text-[#171B26]'
               }`}
             >
               <User className="w-4 h-4" />
@@ -271,10 +271,10 @@ export default function SettingsPage() {
             {isOrgAdminOrOwner && (
               <button
                 onClick={() => setActiveTab('company')}
-                className={`py-3 px-1 border-b-2 text-sm font-semibold transition-colors flex items-center space-x-2 ${
+                className={`py-2.5 px-1 border-b-2 text-[13px] font-medium transition-colors flex items-center space-x-2 ${
                   activeTab === 'company'
-                    ? 'border-primary-600 text-primary-600'
-                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                    ? 'border-[#3659C9] text-[#3659C9] font-semibold'
+                    : 'border-transparent text-[#697386] hover:text-[#171B26]'
                 }`}
               >
                 <Building2 className="w-4 h-4" />
@@ -290,37 +290,37 @@ export default function SettingsPage() {
         {activeTab === 'personal' && (
           <div className="space-y-6">
             {/* Profile Information Card */}
-            <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs p-5 sm:p-6">
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
+            <div className="bg-white rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] p-5 sm:p-6">
+              <div className="flex items-center justify-between pb-3.5 border-b border-[#E7EAF0] mb-5">
                 <div>
-                  <h3 className="font-semibold text-slate-900 text-sm">Personal Information</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <h3 className="font-semibold text-[#171B26] text-sm">Personal Information</h3>
+                  <p className="text-[12px] text-[#697386] mt-0.5">
                     Your avatar and display name are visible to team members across workspaces.
                   </p>
                 </div>
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#F1F3F7] text-[#697386] border border-[#E7EAF0]">
                   Role: {currentRole || 'Member'}
                 </span>
               </div>
 
-              <form onSubmit={handleSaveProfile} className="space-y-6">
+              <form onSubmit={handleSaveProfile} className="space-y-5">
                 {/* Profile Photo / Avatar Section */}
                 <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
-                  <div className="relative group w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-slate-100 border-2 border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
+                  <div className="relative group w-20 h-20 sm:w-22 sm:h-22 rounded-full bg-[#F1F3F7] border border-[#E7EAF0] overflow-hidden shrink-0 flex items-center justify-center">
                     {avatarUrl ? (
                       <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-2xl sm:text-3xl font-extrabold text-slate-600">
+                      <span className="text-2xl font-semibold text-[#697386]">
                         {fullName.charAt(0).toUpperCase() || currentUser?.email?.charAt(0).toUpperCase() || 'U'}
                       </span>
                     )}
                     <button
                       type="button"
                       onClick={() => avatarInputRef.current?.click()}
-                      className="absolute inset-0 bg-slate-900/40 text-white flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      className="absolute inset-0 bg-[#171B26]/60 text-white flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                       title="Change photo"
                     >
-                      <Camera className="w-5 h-5" />
+                      <Camera className="w-4 h-4" />
                       <span className="text-[10px] font-medium mt-0.5">Upload</span>
                     </button>
                   </div>
@@ -333,25 +333,25 @@ export default function SettingsPage() {
                     className="hidden"
                   />
 
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-semibold text-slate-900">Profile Photo</h4>
-                    <p className="text-xs text-slate-500">
+                  <div className="space-y-1.5">
+                    <h4 className="text-[13px] font-semibold text-[#171B26]">Profile Photo</h4>
+                    <p className="text-[12px] text-[#697386]">
                       Recommended: Square JPG, PNG, or WebP. Max size: 5MB.
                     </p>
                     <div className="flex items-center space-x-2 pt-1">
                       <button
                         type="button"
                         onClick={() => avatarInputRef.current?.click()}
-                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium shadow-2xs transition-colors"
+                        className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md border border-[#E7EAF0] bg-white hover:bg-[#F1F3F7] text-[#171B26] text-[12px] font-medium shadow-2xs transition-colors"
                       >
-                        <Upload className="w-3.5 h-3.5 text-slate-400" />
+                        <Upload className="w-3.5 h-3.5 text-[#697386]" />
                         <span>Upload Photo</span>
                       </button>
                       {avatarUrl && (
                         <button
                           type="button"
                           onClick={() => setAvatarUrl(null)}
-                          className="px-3 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 text-xs font-medium transition-colors"
+                          className="px-2.5 py-1.5 rounded-md text-[#B91C1C] hover:bg-[#FEF2F2] text-[12px] font-medium transition-colors"
                         >
                           Remove
                         </button>
@@ -360,10 +360,10 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                   {/* Full Name */}
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">
                       Full Display Name *
                     </label>
                     <input
@@ -372,13 +372,13 @@ export default function SettingsPage() {
                       placeholder="e.g. Arun Kumar"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      className="w-full text-xs rounded-lg border border-slate-300 p-2.5 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white p-2.5 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                     />
                   </div>
 
                   {/* Email Address */}
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">
                       Email Address
                     </label>
                     <div className="relative">
@@ -386,32 +386,32 @@ export default function SettingsPage() {
                         type="email"
                         disabled
                         value={currentUser?.email || ''}
-                        className="w-full text-xs rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-slate-500 cursor-not-allowed pr-9 font-mono"
+                        className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-[#F7F8FA] p-2.5 text-[#697386] cursor-not-allowed pr-9 font-mono"
                       />
-                      <Mail className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+                      <Mail className="w-3.5 h-3.5 text-[#9AA2B1] absolute right-3 top-3" />
                     </div>
-                    <span className="text-[11px] text-slate-400 mt-1 block">
+                    <span className="text-[11px] text-[#697386] mt-1 block">
                       Primary sign-in email cannot be modified directly.
                     </span>
                   </div>
                 </div>
 
                 {/* Save Profile Button */}
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                  <div className="text-[11px] text-slate-400">
+                <div className="pt-4 border-t border-[#E7EAF0] flex items-center justify-between">
+                  <div className="text-[11px] text-[#697386]">
                     Account created on {currentUser?.created_at ? new Date(currentUser.created_at).toLocaleDateString() : 'Recently'}
                   </div>
 
                   <div className="flex items-center space-x-2">
                     {profileSaved && (
-                      <span className="text-xs text-emerald-600 font-semibold flex items-center">
+                      <span className="text-[12px] text-[#047857] font-medium flex items-center">
                         <Check className="w-3.5 h-3.5 mr-1" /> Profile Saved
                       </span>
                     )}
                     <button
                       type="submit"
                       disabled={isSavingProfile}
-                      className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                      className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-[13px] font-medium text-white bg-[#3659C9] hover:bg-[#2B47A1] rounded-md shadow-xs transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {isSavingProfile ? (
                         <>
@@ -431,12 +431,12 @@ export default function SettingsPage() {
             </div>
 
             {/* Security & Password Card */}
-            <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs p-5 sm:p-6">
-              <div className="flex items-center space-x-2.5 pb-4 border-b border-slate-100 mb-5">
-                <Lock className="w-5 h-5 text-primary-600" />
+            <div className="bg-white rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] p-5 sm:p-6">
+              <div className="flex items-center space-x-2.5 pb-3.5 border-b border-[#E7EAF0] mb-5">
+                <Lock className="w-4 h-4 text-[#3659C9]" />
                 <div>
-                  <h3 className="font-semibold text-slate-900 text-sm">Security & Password</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <h3 className="font-semibold text-[#171B26] text-sm">Security & Password</h3>
+                  <p className="text-[12px] text-[#697386] mt-0.5">
                     Update the password associated with your account.
                   </p>
                 </div>
@@ -444,7 +444,7 @@ export default function SettingsPage() {
 
               <form onSubmit={handleUpdatePassword} className="space-y-4 max-w-md">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">
                     New Password
                   </label>
                   <div className="relative">
@@ -454,12 +454,12 @@ export default function SettingsPage() {
                       placeholder="At least 6 characters"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full text-xs rounded-lg border border-slate-300 p-2.5 pr-9 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white p-2.5 pr-9 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                     />
                     <button
                       type="button"
                       onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5"
+                      className="absolute right-2.5 top-2.5 text-[#697386] hover:text-[#171B26] p-0.5"
                       tabIndex={-1}
                       title={showNewPassword ? 'Hide password' : 'Show password'}
                     >
@@ -469,7 +469,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">
                     Confirm New Password
                   </label>
                   <div className="relative">
@@ -479,12 +479,12 @@ export default function SettingsPage() {
                       placeholder="Repeat new password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full text-xs rounded-lg border border-slate-300 p-2.5 pr-9 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white p-2.5 pr-9 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                     />
                     <button
                       type="button"
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5"
+                      className="absolute right-2.5 top-2.5 text-[#697386] hover:text-[#171B26] p-0.5"
                       tabIndex={-1}
                       title={showConfirmPassword ? 'Hide password' : 'Show password'}
                     >
@@ -496,7 +496,7 @@ export default function SettingsPage() {
                 <button
                   type="submit"
                   disabled={isUpdatingPassword}
-                  className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-[13px] font-medium text-white bg-[#171B26] hover:bg-[#2E3545] rounded-md shadow-xs transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isUpdatingPassword ? (
                     <>
@@ -517,18 +517,18 @@ export default function SettingsPage() {
         {/* ================================================================= */}
         {activeTab === 'company' && isOrgAdminOrOwner && (
           <div className="space-y-6">
-            <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs p-5 sm:p-6">
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
+            <div className="bg-white rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] p-5 sm:p-6">
+              <div className="flex items-center justify-between pb-3.5 border-b border-[#E7EAF0] mb-5">
                 <div className="flex items-center space-x-2.5">
-                  <Building2 className="w-5 h-5 text-primary-600" />
+                  <Building2 className="w-4 h-4 text-[#3659C9]" />
                   <div>
-                    <h3 className="font-semibold text-slate-900 text-sm">Company Profile</h3>
-                    <p className="text-xs text-slate-500">
+                    <h3 className="font-semibold text-[#171B26] text-sm">Company Profile</h3>
+                    <p className="text-[12px] text-[#697386]">
                       Organization details, brand assets, and workspace configuration for {currentOrg?.name}.
                     </p>
                   </div>
                 </div>
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-primary-50 text-primary-700 border border-primary-200">
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#F0F4FE] text-[#3659C9] border border-[#3659C9]/20">
                   {currentRole} Access
                 </span>
               </div>
@@ -536,50 +536,50 @@ export default function SettingsPage() {
               <form onSubmit={handleSaveCompany} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Company Name *</label>
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Company Name *</label>
                     <input
                       type="text"
                       required
                       disabled={!canEditOrg}
                       value={companyData.name}
                       onChange={(e) => setCompanyData({ ...companyData, name: e.target.value })}
-                      className="w-full text-xs rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-50 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white p-2.5 disabled:bg-[#F7F8FA] disabled:text-[#697386] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Unique Workspace Slug *</label>
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Unique Workspace Slug *</label>
                     <input
                       type="text"
                       required
                       disabled={!canEditOrg}
                       value={companyData.slug}
                       onChange={(e) => setCompanyData({ ...companyData, slug: e.target.value })}
-                      className="w-full text-xs rounded-lg border border-slate-300 p-2.5 font-mono disabled:bg-slate-50 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white p-2.5 font-mono disabled:bg-[#F7F8FA] disabled:text-[#697386] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Industry</label>
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Industry</label>
                     <input
                       type="text"
                       disabled={!canEditOrg}
                       placeholder="e.g. Events & Entertainment, SaaS, Logistics"
                       value={companyData.industry}
                       onChange={(e) => setCompanyData({ ...companyData, industry: e.target.value })}
-                      className="w-full text-xs rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-50 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white p-2.5 disabled:bg-[#F7F8FA] disabled:text-[#697386] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Company Size</label>
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Company Size</label>
                     <select
                       disabled={!canEditOrg}
                       value={companyData.company_size}
                       onChange={(e) => setCompanyData({ ...companyData, company_size: e.target.value })}
-                      className="w-full text-xs rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-50 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white p-2.5 disabled:bg-[#F7F8FA] disabled:text-[#697386] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                     >
                       <option value="1-10 employees">1-10 employees</option>
                       <option value="10-50 employees">10-50 employees</option>
@@ -591,14 +591,14 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Corporate Website</label>
+                  <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Corporate Website</label>
                   <input
                     type="url"
                     disabled={!canEditOrg}
                     placeholder="https://company.com"
                     value={companyData.website}
                     onChange={(e) => setCompanyData({ ...companyData, website: e.target.value })}
-                    className="w-full text-xs rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-50 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                    className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white p-2.5 disabled:bg-[#F7F8FA] disabled:text-[#697386] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                   />
                 </div>
 
@@ -610,32 +610,32 @@ export default function SettingsPage() {
                 />
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Company Description</label>
+                  <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Company Description</label>
                   <textarea
                     rows={3}
                     disabled={!canEditOrg}
                     value={companyData.description}
                     onChange={(e) => setCompanyData({ ...companyData, description: e.target.value })}
-                    className="w-full text-xs rounded-lg border border-slate-300 p-2.5 disabled:bg-slate-50 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                    className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white p-2.5 disabled:bg-[#F7F8FA] disabled:text-[#697386] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                   />
                 </div>
 
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                  <div className="text-[11px] text-slate-400">
+                <div className="pt-4 border-t border-[#E7EAF0] flex items-center justify-between">
+                  <div className="text-[11px] text-[#697386]">
                     Created on {currentOrg?.created_at ? new Date(currentOrg.created_at).toLocaleDateString() : 'Recently'}
                   </div>
 
                   {canEditOrg && (
                     <div className="flex items-center space-x-2">
                       {companySaved && (
-                        <span className="text-xs text-emerald-600 font-semibold flex items-center">
+                        <span className="text-[12px] text-[#047857] font-medium flex items-center">
                           <Check className="w-3.5 h-3.5 mr-1" /> Settings Saved
                         </span>
                       )}
                       <button
                         type="submit"
                         disabled={isSubmittingCompany}
-                        className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-[13px] font-medium text-white bg-[#3659C9] hover:bg-[#2B47A1] rounded-md shadow-xs transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         {isSubmittingCompany ? (
                           <>
@@ -657,18 +657,18 @@ export default function SettingsPage() {
 
             {/* Danger Zone: Only Owner */}
             {canDeleteOrg && (
-              <div className="bg-white rounded-xl border border-rose-200 shadow-2xs p-5 sm:p-6">
-                <div className="flex items-center space-x-2.5 text-rose-700 mb-2">
-                  <AlertTriangle className="w-5 h-5 text-rose-600" />
-                  <h3 className="font-bold text-sm">Danger Zone</h3>
+              <div className="bg-white rounded-lg border border-[#B91C1C]/20 shadow-[0_1px_2px_rgba(0,0,0,0.03)] p-5 sm:p-6">
+                <div className="flex items-center space-x-2 text-[#B91C1C] mb-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  <h3 className="font-semibold text-sm">Danger Zone</h3>
                 </div>
-                <p className="text-xs text-slate-600 mb-4">
+                <p className="text-[12px] text-[#697386] mb-4">
                   Deleting an organization will permanently terminate access for all members and delete all associated CRM records, pipelines, contacts, and deal histories. This action is irreversible.
                 </p>
                 <button
                   type="button"
                   onClick={handleDeleteOrganization}
-                  className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm transition-colors"
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-[13px] font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-md shadow-xs transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Delete Organization Workspace</span>
@@ -680,17 +680,17 @@ export default function SettingsPage() {
 
         {/* Notice if a non-admin attempts to view company tab */}
         {activeTab === 'company' && !isOrgAdminOrOwner && (
-          <div className="bg-white rounded-xl border border-slate-200 p-8 text-center space-y-3">
-            <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto">
-              <Shield className="w-6 h-6" />
+          <div className="bg-white rounded-lg border border-[#E7EAF0] p-8 text-center space-y-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+            <div className="w-10 h-10 bg-[#FFFBEB] text-[#B45309] rounded-full flex items-center justify-center mx-auto">
+              <Shield className="w-5 h-5" />
             </div>
-            <h3 className="text-sm font-bold text-slate-900">Company Settings Restricted</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            <h3 className="text-sm font-semibold text-[#171B26]">Company Settings Restricted</h3>
+            <p className="text-[12px] text-[#697386] max-w-sm mx-auto">
               Company profile and workspace preferences can only be viewed and modified by Organization Owners and Administrators.
             </p>
             <button
               onClick={() => setActiveTab('personal')}
-              className="mt-2 inline-flex items-center px-3.5 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold"
+              className="mt-2 inline-flex items-center px-3.5 py-1.5 rounded-md bg-[#171B26] text-white text-[12px] font-medium hover:bg-[#2E3545] transition-colors"
             >
               Go to Personal Settings
             </button>

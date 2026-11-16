@@ -345,8 +345,8 @@ export default function RegistrationsPage() {
         {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Registrations</h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-0.5 sm:mt-1">
+            <h1 className="text-xl font-semibold text-[#171B26] tracking-tight">Registrations</h1>
+            <p className="text-[13px] text-[#697386] mt-0.5">
               Attendee list, seat reservations, and payment records from Bharat Play workshops.
             </p>
           </div>
@@ -354,54 +354,54 @@ export default function RegistrationsPage() {
           <div className="flex items-center space-x-2 sm:space-x-2.5">
             <button
               onClick={handleExportCSV}
-              className="flex-1 sm:flex-none inline-flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs sm:text-sm font-medium transition-colors shadow-2xs"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-md bg-white hover:bg-[#F1F3F7] border border-[#E7EAF0] text-[#171B26] text-[13px] font-medium transition-colors shadow-xs"
             >
-              <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />
+              <Download className="w-3.5 h-3.5 text-[#697386]" />
               <span>Export CSV</span>
             </button>
             <button
               onClick={loadRegistrations}
               disabled={isLoading}
-              className="flex-1 sm:flex-none inline-flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-medium transition-colors disabled:opacity-50 shadow-2xs"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-md bg-[#3659C9] hover:bg-[#2B47A1] text-white text-[13px] font-medium transition-colors disabled:opacity-50 shadow-xs"
             >
-              <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
               <span>{isLoading ? 'Refreshing...' : 'Refresh'}</span>
             </button>
           </div>
         </div>
 
         {/* Metric Cards - 3 columns across all devices */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-4">
-          <div className="bg-white p-3 sm:p-5 rounded-xl border border-slate-200/90 shadow-2xs">
-            <p className="text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">Total Bookings</p>
-            <p className="text-lg sm:text-3xl font-extrabold text-slate-900 mt-0.5 sm:mt-1.5">{totalRegistrations}</p>
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <div className="bg-white p-3.5 rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+            <p className="text-[11px] font-medium text-[#697386] uppercase tracking-wider truncate">Total Bookings</p>
+            <p className="text-xl font-semibold text-[#171B26] mt-1 tabular-nums">{totalRegistrations}</p>
           </div>
 
-          <div className="bg-white p-3 sm:p-5 rounded-xl border border-slate-200/90 shadow-2xs">
-            <p className="text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">Reserved Seats</p>
-            <p className="text-lg sm:text-3xl font-extrabold text-slate-900 mt-0.5 sm:mt-1.5">
-              {totalAttendees} <span className="text-[10px] sm:text-sm font-normal text-slate-500 hidden sm:inline">Attendees</span>
+          <div className="bg-white p-3.5 rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+            <p className="text-[11px] font-medium text-[#697386] uppercase tracking-wider truncate">Reserved Seats</p>
+            <p className="text-xl font-semibold text-[#171B26] mt-1 tabular-nums">
+              {totalAttendees} <span className="text-[12px] font-normal text-[#697386] hidden sm:inline">Attendees</span>
             </p>
           </div>
 
-          <div className="bg-white p-3 sm:p-5 rounded-xl border border-slate-200/90 shadow-2xs">
-            <p className="text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">Total Revenue</p>
-            <p className="text-lg sm:text-3xl font-extrabold text-slate-900 mt-0.5 sm:mt-1.5 truncate">
+          <div className="bg-white p-3.5 rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+            <p className="text-[11px] font-medium text-[#697386] uppercase tracking-wider truncate">Total Revenue</p>
+            <p className="text-xl font-semibold text-[#171B26] mt-1 truncate tabular-nums">
               ₹{totalPayableRupees.toLocaleString('en-IN')}
             </p>
           </div>
         </div>
 
         {/* Search & Slot Filter */}
-        <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200/90 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shadow-2xs">
+        <div className="bg-white p-2.5 rounded-lg border border-[#E7EAF0] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <Search className="w-3.5 h-3.5 text-[#9AA2B1] absolute left-3 top-2.5" />
             <input
               type="text"
               placeholder="Search name, phone, email, or slot..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-lg border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-slate-400 transition-colors"
+              className="w-full pl-8 pr-3 py-1.5 text-[13px] rounded-md border border-[#E7EAF0] bg-white text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
             />
           </div>
 
@@ -409,7 +409,7 @@ export default function RegistrationsPage() {
             <select
               value={paymentFilter}
               onChange={(e) => setPaymentFilter(e.target.value as 'all' | 'paid' | 'unpaid')}
-              className="text-xs sm:text-sm px-2.5 py-2 rounded-lg border border-slate-200 bg-white font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              className="text-[13px] px-2.5 py-1.5 rounded-md border border-[#E7EAF0] bg-white font-medium text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9]"
             >
               <option value="all">All Payments</option>
               <option value="paid">Paid Only</option>
@@ -420,7 +420,7 @@ export default function RegistrationsPage() {
               <select
                 value={slotFilter}
                 onChange={(e) => setSlotFilter(e.target.value)}
-                className="text-xs sm:text-sm px-2.5 py-2 rounded-lg border border-slate-200 bg-white font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                className="text-[13px] px-2.5 py-1.5 rounded-md border border-[#E7EAF0] bg-white font-medium text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9]"
               >
                 <option value="all">All Slots ({registrations.length})</option>
                 {allSlots.map((s) => (
@@ -430,7 +430,7 @@ export default function RegistrationsPage() {
                 ))}
               </select>
             )}
-            <span className="text-xs sm:text-sm text-slate-500 font-medium whitespace-nowrap">
+            <span className="text-[12px] text-[#697386] font-medium whitespace-nowrap tabular-nums">
               {filteredRegistrations.length} {filteredRegistrations.length === 1 ? 'record' : 'records'}
             </span>
           </div>
@@ -586,33 +586,33 @@ export default function RegistrationsPage() {
         {/* =================================================================== */}
         {/* DESKTOP VIEW: Read-Only Table (Visible on screens >= 768px)          */}
         {/* =================================================================== */}
-        <div className="hidden md:block bg-white rounded-xl border border-slate-200/90 overflow-hidden shadow-2xs">
+        <div className="hidden md:block bg-white rounded-lg border border-[#E7EAF0] overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
           <div className="overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold text-xs uppercase tracking-wider">
+            <table className="w-full text-left text-[13px]">
+              <thead className="bg-[#F7F8FA] border-b border-[#E7EAF0] text-[#697386] font-medium text-[11px] uppercase tracking-wider">
                 <tr>
-                  <th className="py-3 px-4">Attendee Name</th>
-                  <th className="py-3 px-4">Email ID</th>
-                  <th className="py-3 px-4">Phone Number</th>
-                  <th className="py-3 px-4">Members</th>
-                  <th className="py-3 px-4">Payable</th>
-                  <th className="py-3 px-4">Payment Status</th>
-                  <th className="py-3 px-4">Date & Time (IST)</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-2.5 px-4">Attendee Name</th>
+                  <th className="py-2.5 px-4">Email ID</th>
+                  <th className="py-2.5 px-4">Phone Number</th>
+                  <th className="py-2.5 px-4">Members</th>
+                  <th className="py-2.5 px-4">Payable</th>
+                  <th className="py-2.5 px-4">Payment Status</th>
+                  <th className="py-2.5 px-4">Date & Time (IST)</th>
+                  <th className="py-2.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#E7EAF0]">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400 text-sm">
+                    <td colSpan={8} className="py-12 text-center text-[#697386] text-[13px]">
                       Loading registrations...
                     </td>
                   </tr>
                 ) : filteredRegistrations.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-14 text-center text-slate-400">
-                      <p className="text-base font-medium text-slate-700">No registrations found</p>
-                      <p className="text-sm text-slate-400 mt-1">Attendee submissions will appear here automatically.</p>
+                    <td colSpan={8} className="py-14 text-center text-[#697386]">
+                      <p className="text-[13px] font-medium text-[#171B26]">No registrations found</p>
+                      <p className="text-[12px] text-[#697386] mt-1">Attendee submissions will appear here automatically.</p>
                     </td>
                   </tr>
                 ) : (
@@ -636,39 +636,39 @@ export default function RegistrationsPage() {
                       <tr
                         key={reg.id}
                         onClick={() => setSelectedReg(reg)}
-                        className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                        className="hover:bg-[#F7F8FA] transition-colors cursor-pointer group"
                       >
                         {/* Attendee Name */}
-                        <td className="py-3.5 px-4 font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                        <td className="py-2.5 px-4 font-medium text-[#171B26] group-hover:text-[#3659C9] transition-colors">
                           {attendeeName}
                         </td>
 
                         {/* Email ID */}
-                        <td className="py-3.5 px-4 text-slate-600">
-                          {reg.email || <span className="text-slate-400">—</span>}
+                        <td className="py-2.5 px-4 text-[#697386]">
+                          {reg.email || <span className="text-[#9AA2B1]">—</span>}
                         </td>
 
                         {/* Phone Number */}
-                        <td className="py-3.5 px-4 text-slate-700 font-mono">
-                          {reg.phone || <span className="text-slate-400">—</span>}
+                        <td className="py-2.5 px-4 text-[#171B26] font-mono text-[12px]">
+                          {reg.phone || <span className="text-[#9AA2B1]">—</span>}
                         </td>
 
                         {/* Number of Members */}
-                        <td className="py-3.5 px-4">
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-800">
+                        <td className="py-2.5 px-4">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#F1F3F7] text-[#171B26] border border-[#E7EAF0]">
                             {members}
                           </span>
                         </td>
 
                         {/* Total Payable (Rupees) */}
-                        <td className="py-3.5 px-4 font-bold text-slate-900">
+                        <td className="py-2.5 px-4 font-semibold text-[#171B26] tabular-nums">
                           ₹{Number(reg.value || 649).toLocaleString('en-IN')}
                         </td>
 
                         {/* Payment Status Column */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
+                        <td className="py-2.5 px-4 whitespace-nowrap">
                           <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${paymentInfo.badgeClass}`}
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium border ${paymentInfo.badgeClass}`}
                           >
                             <span className={`w-1.5 h-1.5 rounded-full ${paymentInfo.dotClass}`} />
                             {paymentInfo.label}
@@ -676,7 +676,7 @@ export default function RegistrationsPage() {
                         </td>
 
                         {/* Date Registered */}
-                        <td className="py-3.5 px-4 text-slate-500 text-xs whitespace-nowrap">
+                        <td className="py-2.5 px-4 text-[#697386] text-[12px] whitespace-nowrap tabular-nums">
                           {new Date(reg.created_at).toLocaleString('en-IN', {
                             timeZone: 'Asia/Kolkata',
                             day: 'numeric',
@@ -688,16 +688,16 @@ export default function RegistrationsPage() {
                         </td>
 
                         {/* Actions: Call, WhatsApp, Delete */}
-                        <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end space-x-1.5">
+                        <td className="py-2.5 px-4 text-right">
+                          <div className="flex items-center justify-end space-x-1">
                             {cleanPhone && (
                               <a
                                 href={`tel:${cleanPhone}`}
                                 title={`Call ${attendeeName}`}
                                 onClick={(e) => e.stopPropagation()}
-                                className="w-8 h-8 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center justify-center transition-colors"
+                                className="w-7 h-7 rounded-md text-[#697386] hover:text-[#171B26] hover:bg-[#F1F3F7] flex items-center justify-center transition-colors"
                               >
-                                <Phone className="w-4 h-4 text-slate-600" />
+                                <Phone className="w-3.5 h-3.5" />
                               </a>
                             )}
                             {whatsappLink && (
@@ -707,9 +707,9 @@ export default function RegistrationsPage() {
                                 rel="noreferrer"
                                 title={`WhatsApp ${attendeeName}`}
                                 onClick={(e) => e.stopPropagation()}
-                                className="w-8 h-8 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 flex items-center justify-center transition-colors"
+                                className="w-7 h-7 rounded-md text-[#047857] hover:text-[#065F46] hover:bg-[#ECFDF5] flex items-center justify-center transition-colors"
                               >
-                                <MessageSquare className="w-4 h-4" />
+                                <MessageSquare className="w-3.5 h-3.5" />
                               </a>
                             )}
                             <button
@@ -722,9 +722,9 @@ export default function RegistrationsPage() {
                                 });
                               }}
                               title="Delete registration"
-                              className="w-8 h-8 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors"
+                              className="w-7 h-7 rounded-md text-[#697386] hover:text-[#B91C1C] hover:bg-[#FEF2F2] flex items-center justify-center transition-colors"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </td>
@@ -757,20 +757,20 @@ export default function RegistrationsPage() {
 
           return (
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-100"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#171B26]/40 backdrop-blur-[2px] animate-in fade-in duration-100"
               onClick={() => setSelectedReg(null)}
             >
               <div
-                className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-100"
+                className="bg-white rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#E7EAF0] max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-100"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Header */}
-                <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 flex items-start justify-between shrink-0">
+                <div className="px-5 py-4 border-b border-[#E7EAF0] flex items-start justify-between shrink-0">
                   <div className="min-w-0 pr-2">
-                    <h3 className="text-lg sm:text-xl font-bold text-slate-900 leading-tight truncate">
+                    <h3 className="text-base font-semibold text-[#171B26] leading-tight truncate">
                       {attendeeName}
                     </h3>
-                    <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                    <p className="text-[12px] text-[#697386] mt-0.5">
                       Registered on {new Date(selectedReg.created_at).toLocaleString('en-IN', {
                         timeZone: 'Asia/Kolkata',
                         dateStyle: 'medium',
@@ -781,54 +781,54 @@ export default function RegistrationsPage() {
 
                   <button
                     onClick={() => setSelectedReg(null)}
-                    className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors shrink-0"
+                    className="text-[#697386] hover:text-[#171B26] p-1 rounded-md hover:bg-[#F1F3F7] transition-colors shrink-0"
                     aria-label="Close"
                   >
-                    <X className="w-5 h-5" />
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
 
                 {/* Body Details */}
-                <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                <div className="p-5 space-y-4 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                   {/* Information List */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 sm:gap-x-6 gap-y-3 sm:gap-y-4 bg-slate-50/80 p-3.5 sm:p-4 rounded-xl border border-slate-100">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 bg-[#F7F8FA] p-3.5 rounded-lg border border-[#E7EAF0]">
                     <div>
-                      <span className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wide block">Email Address</span>
+                      <span className="text-[11px] font-medium text-[#697386] uppercase tracking-wider block">Email Address</span>
                       <div className="flex items-center space-x-2 mt-1">
-                        <span className="text-xs sm:text-sm font-medium text-slate-900 truncate">
+                        <span className="text-[13px] font-medium text-[#171B26] truncate">
                           {selectedReg.email || '—'}
                         </span>
                         {selectedReg.email && (
                           <button
                             onClick={() => handleCopy(selectedReg.email!, 'email')}
-                            className="text-slate-400 hover:text-slate-700 transition-colors shrink-0"
+                            className="text-[#697386] hover:text-[#171B26] transition-colors shrink-0"
                             title="Copy email"
                           >
-                            {copiedField === 'email' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                            {copiedField === 'email' ? <Check className="w-3.5 h-3.5 text-[#047857]" /> : <Copy className="w-3.5 h-3.5" />}
                           </button>
                         )}
                       </div>
                     </div>
 
                     <div>
-                      <span className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wide block">Phone Number</span>
+                      <span className="text-[11px] font-medium text-[#697386] uppercase tracking-wider block">Phone Number</span>
                       <div className="flex items-center space-x-2 mt-1 font-mono">
-                        <span className="text-xs sm:text-sm font-medium text-slate-900 truncate">
+                        <span className="text-[13px] font-medium text-[#171B26] truncate">
                           {selectedReg.phone || '—'}
                         </span>
                         {selectedReg.phone && (
                           <button
                             onClick={() => handleCopy(selectedReg.phone!, 'phone')}
-                            className="text-slate-400 hover:text-slate-700 transition-colors shrink-0"
+                            className="text-[#697386] hover:text-[#171B26] transition-colors shrink-0"
                             title="Copy phone"
                           >
-                            {copiedField === 'phone' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                            {copiedField === 'phone' ? <Check className="w-3.5 h-3.5 text-[#047857]" /> : <Copy className="w-3.5 h-3.5" />}
                           </button>
                         )}
                         {cleanPhone && (
                           <a
                             href={`tel:${cleanPhone}`}
-                            className="text-xs text-sky-600 hover:text-sky-800 font-semibold inline-flex items-center gap-1 ml-1 shrink-0"
+                            className="text-[12px] text-[#3659C9] hover:underline font-medium inline-flex items-center gap-1 ml-1 shrink-0"
                             title="Call phone"
                           >
                             <Phone className="w-3.5 h-3.5" />
@@ -839,29 +839,29 @@ export default function RegistrationsPage() {
                     </div>
 
                     <div>
-                      <span className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wide block">Number of Members</span>
-                      <span className="text-sm sm:text-base font-bold text-slate-900 mt-0.5 block">
+                      <span className="text-[11px] font-medium text-[#697386] uppercase tracking-wider block">Number of Members</span>
+                      <span className="text-[13px] font-semibold text-[#171B26] mt-0.5 block">
                         {members}
                       </span>
                     </div>
 
                     <div>
-                      <span className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wide block">Chosen Slot</span>
-                      <span className="text-xs sm:text-sm font-semibold text-slate-900 mt-0.5 block truncate">
+                      <span className="text-[11px] font-medium text-[#697386] uppercase tracking-wider block">Chosen Slot</span>
+                      <span className="text-[13px] font-medium text-[#171B26] mt-0.5 block truncate">
                         {slot}
                       </span>
                     </div>
 
                     <div>
-                      <span className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wide block">Total Payable</span>
-                      <span className="text-base sm:text-lg font-extrabold text-slate-900 mt-0.5 block">
+                      <span className="text-[11px] font-medium text-[#697386] uppercase tracking-wider block">Total Payable</span>
+                      <span className="text-[14px] font-semibold text-[#171B26] mt-0.5 block tabular-nums">
                         ₹{Number(selectedReg.value || 649).toLocaleString('en-IN')}
                       </span>
                     </div>
 
                     <div>
-                      <span className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wide block">Payment Status</span>
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border mt-1 ${paymentInfo.badgeClass}`}>
+                      <span className="text-[11px] font-medium text-[#697386] uppercase tracking-wider block">Payment Status</span>
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium border mt-1 ${paymentInfo.badgeClass}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${paymentInfo.dotClass}`} />
                         {paymentInfo.label}
                       </span>
@@ -870,16 +870,16 @@ export default function RegistrationsPage() {
 
                   {/* Payment Proof Section */}
                   <div>
-                    <span className="text-[11px] sm:text-xs font-semibold text-slate-600 uppercase tracking-wider block mb-2">
+                    <span className="text-[11px] font-medium text-[#697386] uppercase tracking-wider block mb-1.5">
                       Payment Screenshot
                     </span>
                     {screenshotUrl ? (
-                      <div className="flex items-center justify-between p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl gap-2">
+                      <div className="flex items-center justify-between p-3 bg-white border border-[#E7EAF0] rounded-lg gap-2">
                         <div
                           onClick={() => setZoomedScreenshot(screenshotUrl)}
-                          className="flex items-center space-x-2.5 sm:space-x-3 cursor-pointer group min-w-0"
+                          className="flex items-center space-x-3 cursor-pointer group min-w-0"
                         >
-                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-slate-900 overflow-hidden shrink-0 border border-slate-200">
+                          <div className="w-12 h-12 rounded-md bg-[#171B26] overflow-hidden shrink-0 border border-[#E7EAF0]">
                             <img
                               src={screenshotUrl}
                               alt="Payment screenshot preview"
@@ -887,10 +887,10 @@ export default function RegistrationsPage() {
                             />
                           </div>
                           <div className="min-w-0">
-                            <p className="font-semibold text-slate-900 text-xs sm:text-sm group-hover:text-indigo-600 transition-colors truncate">
+                            <p className="font-medium text-[#171B26] text-[13px] group-hover:text-[#3659C9] transition-colors truncate">
                               Tap to view screenshot
                             </p>
-                            <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                            <p className="text-[11px] text-[#697386] mt-0.5 truncate">
                               Attached payment proof
                             </p>
                           </div>
@@ -899,13 +899,13 @@ export default function RegistrationsPage() {
                         <a
                           href={screenshotUrl}
                           download={`payment-${attendeeName.toLowerCase().replace(/\s+/g, '-')}.jpg`}
-                          className="text-xs text-slate-700 hover:text-slate-900 font-semibold px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors shadow-2xs shrink-0"
+                          className="text-[12px] text-[#171B26] hover:bg-[#F1F3F7] font-medium px-2.5 py-1.5 rounded-md border border-[#E7EAF0] bg-white transition-colors shadow-2xs shrink-0"
                         >
                           Download
                         </a>
                       </div>
                     ) : (
-                      <p className="text-xs sm:text-sm text-slate-400 italic p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <p className="text-[12px] text-[#9AA2B1] italic p-3 bg-[#F7F8FA] rounded-lg border border-[#E7EAF0]">
                         No payment screenshot attached
                       </p>
                     )}
@@ -913,7 +913,7 @@ export default function RegistrationsPage() {
                 </div>
 
                 {/* Footer with Direct Call, WhatsApp, and Delete Actions */}
-                <div className="px-4 sm:px-6 py-3.5 border-t border-slate-100 bg-slate-50/90 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+                <div className="px-5 py-3 border-t border-[#E7EAF0] bg-[#F7F8FA] flex flex-wrap items-center justify-between gap-2.5 shrink-0">
                   <button
                     type="button"
                     onClick={() =>
@@ -923,9 +923,9 @@ export default function RegistrationsPage() {
                         attendeeName,
                       })
                     }
-                    className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors inline-flex items-center space-x-1"
+                    className="text-[#B91C1C] hover:text-[#991B1B] hover:bg-[#FEF2F2] px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors inline-flex items-center space-x-1"
                   >
-                    <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
                     <span>Delete</span>
                   </button>
 
@@ -933,9 +933,9 @@ export default function RegistrationsPage() {
                     {cleanPhone && (
                       <a
                         href={`tel:${cleanPhone}`}
-                        className="inline-flex items-center space-x-1 px-3 sm:px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs"
+                        className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-md bg-[#171B26] hover:bg-[#2E3545] text-white text-[12px] font-medium transition-colors shadow-xs"
                       >
-                        <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        <Phone className="w-3.5 h-3.5" />
                         <span>Call</span>
                       </a>
                     )}
@@ -944,16 +944,16 @@ export default function RegistrationsPage() {
                         href={whatsappUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center space-x-1 px-3 sm:px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold transition-colors shadow-xs"
+                        className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-md bg-[#047857] hover:bg-[#065F46] text-white text-[12px] font-medium transition-colors shadow-xs"
                       >
-                        <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        <MessageSquare className="w-3.5 h-3.5" />
                         <span>WhatsApp</span>
                       </a>
                     )}
                     <button
                       type="button"
                       onClick={() => setSelectedReg(null)}
-                      className="px-3 sm:px-4 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-medium transition-colors"
+                      className="px-3 py-1.5 rounded-md border border-[#E7EAF0] bg-white hover:bg-[#F1F3F7] text-[#171B26] text-[12px] font-medium transition-colors"
                     >
                       Close
                     </button>

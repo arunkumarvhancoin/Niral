@@ -20,10 +20,19 @@ import {
   X,
   AlertCircle,
   Loader2,
+  Building,
 } from 'lucide-react';
 
 export default function TasksPage() {
-  const { currentOrg, currentRole, currentStatus, currentUser } = useWorkspace();
+  const {
+    currentOrg,
+    currentRole,
+    currentStatus,
+    currentUser,
+    effectiveOrgIds,
+    isSuperAdmin: isSuper,
+    memberships,
+  } = useWorkspace();
 
   // Tasks state
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -36,6 +45,7 @@ export default function TasksPage() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [taskFormData, setTaskFormData] = useState(() => ({
+    organization_id: currentOrg?.id || '',
     title: '',
     description: '',
     due_date: new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
@@ -44,44 +54,51 @@ export default function TasksPage() {
     assigned_to: '',
   }));
 
-  const canCreateTask = hasPermission(currentRole, currentStatus, 'crm:tasks:create');
-  const canUpdateTask = hasPermission(currentRole, currentStatus, 'crm:tasks:update');
-  const canDeleteTask = hasPermission(currentRole, currentStatus, 'crm:tasks:delete');
+  const canCreateTask = isSuper || hasPermission(currentRole, currentStatus, 'crm:tasks:create', currentUser);
+  const canUpdateTask = isSuper || hasPermission(currentRole, currentStatus, 'crm:tasks:update', currentUser);
+  const canDeleteTask = isSuper || hasPermission(currentRole, currentStatus, 'crm:tasks:delete', currentUser);
+
+  const orgIdsKey = effectiveOrgIds.join(',');
 
   const loadMembers = useCallback(async () => {
-    if (!currentOrg?.id) return;
+    if (effectiveOrgIds.length === 0) return;
     try {
-      const members = await CRMService.getOrganizationMembers(currentOrg.id);
+      const members = await CRMService.getOrganizationMembers(effectiveOrgIds);
       setTeamMembers(members);
     } catch (err) {
       console.error(err);
     }
-  }, [currentOrg?.id]);
+  }, [orgIdsKey]);
 
   const loadTasks = useCallback(async () => {
-    if (!currentOrg?.id) return;
+    if (effectiveOrgIds.length === 0) {
+      setTasks([]);
+      setIsTasksLoading(false);
+      return;
+    }
     if (tasks.length === 0) {
       setIsTasksLoading(true);
     }
     try {
-      const data = await CRMService.getTasks(currentOrg.id, taskFilter);
+      const data = await CRMService.getTasks(effectiveOrgIds, taskFilter);
       setTasks(data);
     } catch (err) {
       console.error(err);
     } finally {
       setIsTasksLoading(false);
     }
-  }, [currentOrg?.id, taskFilter, tasks.length]);
+  }, [orgIdsKey, taskFilter, tasks.length]);
 
   useEffect(() => {
-    if (currentOrg?.id) {
+    if (effectiveOrgIds.length > 0) {
       loadTasks();
       loadMembers();
     }
-  }, [currentOrg?.id, loadTasks, loadMembers]);
+  }, [orgIdsKey, loadTasks, loadMembers]);
 
   const handleToggleTaskStatus = async (task: Task) => {
-    if (!currentOrg || !canUpdateTask) return;
+    const targetOrgId = task.organization_id || currentOrg?.id;
+    if (!targetOrgId || !canUpdateTask) return;
     const newStatus = task.status === 'completed' ? 'todo' : 'completed';
 
     // Optimistic update
@@ -90,7 +107,7 @@ export default function TasksPage() {
     );
 
     try {
-      await CRMService.updateTask(task.id, currentOrg.id, { status: newStatus });
+      await CRMService.updateTask(task.id, targetOrgId, { status: newStatus });
       toast.success(newStatus === 'completed' ? 'Task marked complete!' : 'Task status updated');
       await loadTasks();
     } catch (err: any) {
@@ -114,15 +131,18 @@ export default function TasksPage() {
 
   const handleTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentOrg || !currentUser) return;
+    const targetOrgId = editingTask
+      ? (editingTask.organization_id || currentOrg?.id)
+      : (taskFormData.organization_id || currentOrg?.id || effectiveOrgIds[0]);
+    if (!targetOrgId || !currentUser) return;
     setIsSavingTask(true);
     try {
       if (editingTask) {
-        await CRMService.updateTask(editingTask.id, currentOrg.id, taskFormData);
+        await CRMService.updateTask(editingTask.id, targetOrgId, taskFormData);
         toast.success(`Task "${taskFormData.title}" updated!`);
       } else {
         await CRMService.createTask(
-          currentOrg.id,
+          targetOrgId,
           {
             ...taskFormData,
             assigned_to: taskFormData.assigned_to || currentUser.id,
@@ -141,7 +161,9 @@ export default function TasksPage() {
   };
 
   const handleDeleteTask = (taskId: string) => {
-    if (!currentOrg || !canDeleteTask) return;
+    const task = tasks.find((t) => t.id === taskId);
+    const targetOrgId = task?.organization_id || currentOrg?.id;
+    if (!targetOrgId || !canDeleteTask) return;
     setConfirmState({
       isOpen: true,
       title: 'Delete Task',
@@ -150,7 +172,7 @@ export default function TasksPage() {
       variant: 'danger',
       action: async () => {
         try {
-          await CRMService.deleteTask(taskId, currentOrg.id);
+          await CRMService.deleteTask(taskId, targetOrgId);
           toast.success('Task deleted successfully');
           await loadTasks();
         } catch (err: any) {
@@ -168,11 +190,11 @@ export default function TasksPage() {
         {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 flex items-center space-x-2">
-              <CheckSquare className="w-5 h-5 text-primary-600" />
+            <h1 className="text-xl font-semibold tracking-tight text-[#171B26] flex items-center space-x-2">
+              <CheckSquare className="w-5 h-5 text-[#3659C9]" />
               <span>Tasks</span>
             </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+            <p className="text-[13px] text-[#697386] mt-0.5">
               Action items, follow-ups, and assigned to-dos for {currentOrg?.name}.
             </p>
           </div>
@@ -182,6 +204,7 @@ export default function TasksPage() {
                 onClick={() => {
                   setEditingTask(null);
                   setTaskFormData({
+                    organization_id: currentOrg?.id || effectiveOrgIds[0] || '',
                     title: '',
                     description: '',
                     due_date: new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
@@ -191,7 +214,7 @@ export default function TasksPage() {
                   });
                   setIsTaskModalOpen(true);
                 }}
-                className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold shadow-xs transition-colors"
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-[#3659C9] hover:bg-[#2B47A1] text-white text-[13px] font-medium shadow-xs transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 <span>New Task</span>
@@ -202,33 +225,33 @@ export default function TasksPage() {
 
         {/* Quick Task Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center ring-1 ring-blue-500/10 flex-shrink-0">
+          <div className="bg-white p-3.5 rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-md bg-[#F0F4FE] text-[#3659C9] flex items-center justify-center flex-shrink-0">
               <CheckSquare className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Pending Tasks</p>
-              <p className="text-base font-bold text-slate-900">{tasks.filter((t) => t.status !== 'completed').length}</p>
+              <p className="text-[11px] font-medium uppercase tracking-wider text-[#697386]">Pending Tasks</p>
+              <p className="text-lg font-semibold text-[#171B26] tabular-nums">{tasks.filter((t) => t.status !== 'completed').length}</p>
             </div>
           </div>
 
-          <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center ring-1 ring-emerald-500/10 flex-shrink-0">
+          <div className="bg-white p-3.5 rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-md bg-[#ECFDF5] text-[#047857] flex items-center justify-center flex-shrink-0">
               <CheckCircle2 className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Completed</p>
-              <p className="text-base font-bold text-emerald-600">{tasks.filter((t) => t.status === 'completed').length}</p>
+              <p className="text-[11px] font-medium uppercase tracking-wider text-[#697386]">Completed</p>
+              <p className="text-lg font-semibold text-[#047857] tabular-nums">{tasks.filter((t) => t.status === 'completed').length}</p>
             </div>
           </div>
 
-          <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center ring-1 ring-rose-500/10 flex-shrink-0">
+          <div className="bg-white p-3.5 rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-md bg-[#FEF2F2] text-[#B91C1C] flex items-center justify-center flex-shrink-0">
               <AlertCircle className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Urgent / High</p>
-              <p className="text-base font-bold text-rose-600">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-[#697386]">Urgent / High</p>
+              <p className="text-lg font-semibold text-[#B91C1C] tabular-nums">
                 {tasks.filter((t) => t.priority === 'urgent' || t.priority === 'high').length}
               </p>
             </div>
@@ -239,21 +262,20 @@ export default function TasksPage() {
         <div className="space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="flex items-center space-x-2">
-              <CheckSquare className="w-4 h-4 text-slate-700" />
-              <h2 className="text-base font-semibold text-slate-900">Action Items</h2>
-              <span className="text-xs text-slate-400 font-medium">({tasks.length})</span>
+              <h2 className="text-sm font-semibold text-[#171B26]">Action Items</h2>
+              <span className="text-[12px] text-[#697386] font-medium tabular-nums">({tasks.length})</span>
             </div>
 
             {/* Task Filters */}
-            <div className="flex items-center space-x-1 bg-slate-100 p-0.5 rounded-lg">
+            <div className="flex items-center space-x-1 bg-[#F1F3F7] p-0.5 rounded-md border border-[#E7EAF0]">
               {(['pending', 'completed', 'all'] as const).map((f) => (
                 <button
                   key={f}
                   onClick={() => setTaskFilter(f)}
-                  className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-all ${
+                  className={`px-2.5 py-1 rounded text-[12px] font-medium capitalize transition-all ${
                     taskFilter === f
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-900'
+                      ? 'bg-white text-[#171B26] shadow-xs font-semibold'
+                      : 'text-[#697386] hover:text-[#171B26]'
                   }`}
                 >
                   {f}
@@ -262,20 +284,20 @@ export default function TasksPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
-            <div className="divide-y divide-slate-100">
+          <div className="bg-white rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] overflow-hidden">
+            <div className="divide-y divide-[#E7EAF0]">
               {isTasksLoading ? (
-                <div className="py-12 text-center text-xs text-slate-400 flex flex-col items-center justify-center space-y-2">
-                  <Loader2 className="w-5 h-5 text-primary-500 animate-spin" />
+                <div className="py-12 text-center text-[13px] text-[#697386] flex flex-col items-center justify-center space-y-2">
+                  <Loader2 className="w-4 h-4 text-[#3659C9] animate-spin" />
                   <span>Loading tasks...</span>
                 </div>
               ) : tasks.length === 0 ? (
                 <div className="py-12 text-center">
-                  <CheckSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-slate-600">
+                  <CheckSquare className="w-8 h-8 text-[#9AA2B1] mx-auto mb-2" />
+                  <p className="text-[13px] font-medium text-[#171B26]">
                     {taskFilter === 'pending' ? 'All caught up!' : 'No tasks in this view'}
                   </p>
-                  <p className="text-xs text-slate-400 mt-0.5">
+                  <p className="text-[12px] text-[#697386] mt-0.5">
                     {taskFilter === 'pending'
                       ? 'No pending action items for this workspace.'
                       : 'Create a new task to keep track of follow-ups.'}
@@ -287,39 +309,39 @@ export default function TasksPage() {
                   return (
                     <div
                       key={task.id}
-                      className={`p-3.5 flex items-start justify-between hover:bg-slate-50/70 transition-colors ${
-                        isCompleted ? 'bg-slate-50/40 opacity-75' : ''
+                      className={`p-3.5 flex items-start justify-between hover:bg-[#F7F8FA] transition-colors ${
+                        isCompleted ? 'bg-[#F7F8FA]/60 opacity-75' : ''
                       }`}
                     >
                       <div className="flex items-start space-x-3 flex-1 min-w-0">
                         <button
                           onClick={() => handleToggleTaskStatus(task)}
-                          className="mt-0.5 text-slate-400 hover:text-primary-600 transition-colors flex-shrink-0"
+                          className="mt-0.5 text-[#9AA2B1] hover:text-[#3659C9] transition-colors flex-shrink-0"
                           title={isCompleted ? 'Mark incomplete' : 'Mark complete'}
                         >
                           {isCompleted ? (
-                            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                            <CheckCircle2 className="w-4 h-4 text-[#047857]" />
                           ) : (
-                            <Circle className="w-5 h-5 text-slate-300 hover:text-primary-500" />
+                            <Circle className="w-4 h-4 text-[#BAC0CE] hover:text-[#3659C9]" />
                           )}
                         </button>
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center space-x-2">
                             <h4
-                              className={`text-xs font-semibold ${
-                                isCompleted ? 'text-slate-400 line-through' : 'text-slate-900'
+                              className={`text-[13px] font-medium ${
+                                isCompleted ? 'text-[#697386] line-through' : 'text-[#171B26]'
                               }`}
                             >
                               {task.title}
                             </h4>
                             <span
-                              className={`text-[10px] font-medium px-2 py-0.2 rounded capitalize ${
+                              className={`text-[10px] font-medium px-1.5 py-0.5 rounded capitalize ${
                                 task.priority === 'urgent'
-                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  ? 'bg-[#FEF2F2] text-[#B91C1C] border border-[#B91C1C]/20'
                                   : task.priority === 'high'
-                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                  : 'bg-slate-100 text-slate-600'
+                                  ? 'bg-[#FFFBEB] text-[#B45309] border border-[#B45309]/20'
+                                  : 'bg-[#F1F3F7] text-[#697386] border border-[#E7EAF0]'
                               }`}
                             >
                               {task.priority}
@@ -327,21 +349,27 @@ export default function TasksPage() {
                           </div>
 
                           {task.description && (
-                            <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                            <p className="text-[12px] text-[#697386] mt-1 line-clamp-2">
                               {task.description}
                             </p>
                           )}
 
-                          <div className="flex flex-wrap items-center gap-3 mt-1.5 text-[11px] text-slate-400">
+                          <div className="flex flex-wrap items-center gap-3 mt-1.5 text-[11px] text-[#697386]">
+                            {task.organization?.name && (
+                              <span className="flex items-center text-[#171B26] font-medium">
+                                <Building className="w-3.5 h-3.5 mr-1 text-[#9AA2B1]" />
+                                {task.organization.name}
+                              </span>
+                            )}
                             {task.due_date && (
-                              <span className="flex items-center">
-                                <Calendar className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                              <span className="flex items-center tabular-nums">
+                                <Calendar className="w-3.5 h-3.5 mr-1 text-[#9AA2B1]" />
                                 Due: {new Date(task.due_date).toLocaleDateString()}
                               </span>
                             )}
                             {task.assignee && (
-                              <span className="flex items-center text-slate-500">
-                                <User className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                              <span className="flex items-center text-[#697386]">
+                                <User className="w-3.5 h-3.5 mr-1 text-[#9AA2B1]" />
                                 {task.assignee.full_name || task.assignee.email}
                               </span>
                             )}
@@ -355,6 +383,7 @@ export default function TasksPage() {
                             onClick={() => {
                               setEditingTask(task);
                               setTaskFormData({
+                                organization_id: task.organization_id || currentOrg?.id || '',
                                 title: task.title,
                                 description: task.description || '',
                                 due_date: task.due_date || '',
@@ -364,7 +393,7 @@ export default function TasksPage() {
                               });
                               setIsTaskModalOpen(true);
                             }}
-                            className="p-1.5 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100 transition-colors"
+                            className="p-1.5 text-[#697386] hover:text-[#171B26] rounded hover:bg-[#F1F3F7] transition-colors"
                             title="Edit Task"
                           >
                             <Edit className="w-3.5 h-3.5" />
@@ -373,7 +402,7 @@ export default function TasksPage() {
                         {canDeleteTask && (
                           <button
                             onClick={() => handleDeleteTask(task.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition-colors"
+                            className="p-1.5 text-[#697386] hover:text-[#B91C1C] rounded hover:bg-[#FEF2F2] transition-colors"
                             title="Delete Task"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -390,60 +419,79 @@ export default function TasksPage() {
 
         {/* TASK MODAL */}
         {isTaskModalOpen && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="font-bold text-slate-900 text-sm">
+          <div className="fixed inset-0 bg-[#171B26]/40 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#E7EAF0] max-w-md w-full overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
+              <div className="px-5 py-4 border-b border-[#E7EAF0] flex items-center justify-between">
+                <h3 className="font-semibold text-[#171B26] text-sm">
                   {editingTask ? 'Edit Task' : 'New Task'}
                 </h3>
                 <button
                   onClick={() => setIsTaskModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-600 p-1"
+                  className="text-[#697386] hover:text-[#171B26] p-1 rounded-md hover:bg-[#F1F3F7] transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
               <form onSubmit={handleTaskSubmit} className="p-5 space-y-4">
+                {isSuper && memberships.length > 0 && !editingTask && (
+                  <div>
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">
+                      Organization * <span className="text-[11px] text-[#5B21B6] font-normal">(Super Admin)</span>
+                    </label>
+                    <select
+                      value={taskFormData.organization_id || currentOrg?.id}
+                      onChange={(e) => setTaskFormData({ ...taskFormData, organization_id: e.target.value })}
+                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
+                    >
+                      {memberships.map((m) => (
+                        <option key={m.organization.id} value={m.organization.id}>
+                          {m.organization.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Title *</label>
+                  <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Title *</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Follow up on contract review"
                     value={taskFormData.title}
                     onChange={(e) => setTaskFormData({ ...taskFormData, title: e.target.value })}
-                    className="w-full text-xs rounded-lg border border-slate-300 p-2 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                    className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Description</label>
+                  <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Description</label>
                   <textarea
                     rows={2}
                     placeholder="Notes or details..."
                     value={taskFormData.description}
                     onChange={(e) => setTaskFormData({ ...taskFormData, description: e.target.value })}
-                    className="w-full text-xs rounded-lg border border-slate-300 p-2 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                    className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Due Date</label>
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Due Date</label>
                     <input
                       type="date"
                       value={taskFormData.due_date}
                       onChange={(e) => setTaskFormData({ ...taskFormData, due_date: e.target.value })}
-                      className="w-full text-xs rounded-lg border border-slate-300 p-2 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] tabular-nums focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Priority</label>
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Priority</label>
                     <select
                       value={taskFormData.priority}
                       onChange={(e) => setTaskFormData({ ...taskFormData, priority: e.target.value as any })}
-                      className="w-full text-xs rounded-lg border border-slate-300 p-2 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                     >
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>
@@ -454,11 +502,11 @@ export default function TasksPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Assignee</label>
+                  <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Assignee</label>
                   <select
                     value={taskFormData.assigned_to}
                     onChange={(e) => setTaskFormData({ ...taskFormData, assigned_to: e.target.value })}
-                    className="w-full text-xs rounded-lg border border-slate-300 p-2 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                    className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                   >
                     <option value="">Assign to Me (Default)</option>
                     {teamMembers.map((m) => (
@@ -469,18 +517,18 @@ export default function TasksPage() {
                   </select>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
+                <div className="pt-3 border-t border-[#E7EAF0] flex items-center justify-end space-x-2">
                   <button
                     type="button"
                     onClick={() => setIsTaskModalOpen(false)}
-                    className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                    className="px-3.5 py-2 text-[13px] font-medium text-[#697386] hover:text-[#171B26] hover:bg-[#F1F3F7] rounded-md transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isSavingTask}
-                    className="px-4 py-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-sm transition-colors flex items-center space-x-1 disabled:opacity-50"
+                    className="px-4 py-2 text-[13px] font-medium text-white bg-[#3659C9] hover:bg-[#2B47A1] rounded-md shadow-xs transition-colors flex items-center space-x-1 disabled:opacity-50"
                   >
                     {isSavingTask && <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />}
                     <span>{editingTask ? 'Save Changes' : 'Create Task'}</span>

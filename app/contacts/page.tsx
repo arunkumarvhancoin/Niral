@@ -31,16 +31,44 @@ import {
 import Link from 'next/link';
 
 export default function ContactsPage() {
-  const { currentOrg, currentRole, currentStatus, currentUser } = useWorkspace();
+  const {
+    currentOrg,
+    currentRole,
+    currentStatus,
+    currentUser,
+    effectiveOrgIds: globalOrgIds,
+    isSuperAdmin: isSuper,
+    isAllOrgsSelected,
+    isMultiOrgActive,
+    memberships,
+  } = useWorkspace();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [orgFilter, setOrgFilter] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
+
+  // Sync org filter if currentOrg changes
+  useEffect(() => {
+    if (!isSuper && currentOrg?.id) {
+      setOrgFilter(currentOrg.id);
+    }
+  }, [currentOrg?.id, isSuper]);
+
+  const effectiveOrgIds =
+    orgFilter !== 'all'
+      ? [orgFilter]
+      : globalOrgIds.length > 0
+      ? globalOrgIds
+      : currentOrg?.id
+      ? [currentOrg.id]
+      : [];
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [formData, setFormData] = useState({
+    organization_id: currentOrg?.id || '',
     first_name: '',
     last_name: '',
     email: '',
@@ -56,34 +84,41 @@ export default function ContactsPage() {
     lead_priority: 'Medium' as Lead['priority'],
   });
 
-  const canCreate = hasPermission(currentRole, currentStatus, 'crm:contacts:create');
-  const canUpdate = hasPermission(currentRole, currentStatus, 'crm:contacts:update');
-  const canDelete = hasPermission(currentRole, currentStatus, 'crm:contacts:delete');
+  const canCreate = isSuper || hasPermission(currentRole, currentStatus, 'crm:contacts:create', currentUser);
+  const canUpdate = isSuper || hasPermission(currentRole, currentStatus, 'crm:contacts:update', currentUser);
+  const canDelete = isSuper || hasPermission(currentRole, currentStatus, 'crm:contacts:delete', currentUser);
+
+  const orgIdsKey = effectiveOrgIds.join(',');
 
   const loadContacts = useCallback(async () => {
-    if (!currentOrg?.id) return;
+    if (effectiveOrgIds.length === 0) {
+      setContacts([]);
+      setIsLoading(false);
+      return;
+    }
     if (contacts.length === 0) {
       setIsLoading(true);
     }
     try {
-      const data = await CRMService.getContacts(currentOrg.id, search, statusFilter);
+      const data = await CRMService.getContacts(effectiveOrgIds, search, statusFilter);
       setContacts(data);
     } catch (err) {
       console.error(err);
     } finally {
       setIsLoading(false);
     }
-  }, [currentOrg?.id, search, statusFilter, contacts.length]);
+  }, [orgIdsKey, search, statusFilter, contacts.length]);
 
   useEffect(() => {
-    if (currentOrg?.id) {
+    if (effectiveOrgIds.length > 0) {
       loadContacts();
     }
-  }, [currentOrg?.id, loadContacts]);
+  }, [orgIdsKey, loadContacts]);
 
   const handleOpenCreate = () => {
     setEditingContact(null);
     setFormData({
+      organization_id: currentOrg?.id || effectiveOrgIds[0] || (memberships[0]?.organization.id ?? ''),
       first_name: '',
       last_name: '',
       email: '',
@@ -103,6 +138,7 @@ export default function ContactsPage() {
   const handleOpenEdit = (contact: Contact) => {
     setEditingContact(contact);
     setFormData({
+      organization_id: contact.organization_id,
       first_name: contact.first_name,
       last_name: contact.last_name,
       email: contact.email || '',
@@ -134,7 +170,8 @@ export default function ContactsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentOrg || !currentUser) return;
+    const targetOrgId = editingContact?.organization_id || formData.organization_id || currentOrg?.id;
+    if (!targetOrgId || !currentUser) return;
 
     try {
       const contactPayload = {
@@ -149,10 +186,10 @@ export default function ContactsPage() {
       };
 
       if (editingContact) {
-        await CRMService.updateContact(editingContact.id, currentOrg.id, contactPayload);
+        await CRMService.updateContact(editingContact.id, targetOrgId, contactPayload);
         toast.success(`Contact "${formData.first_name} ${formData.last_name}" updated!`);
       } else {
-        await CRMService.createContact(currentOrg.id, contactPayload, currentUser.id);
+        await CRMService.createContact(targetOrgId, contactPayload, currentUser.id);
 
         // If marked as lead, automatically create corresponding Lead
         if (formData.status === 'lead') {
@@ -160,7 +197,7 @@ export default function ContactsPage() {
             ? `${formData.first_name} ${formData.last_name} (${formData.company_name})`
             : `${formData.first_name} ${formData.last_name}`;
           await CRMService.createLead(
-            currentOrg.id,
+            targetOrgId,
             {
               title: leadTitle,
               first_name: formData.first_name,
@@ -187,8 +224,9 @@ export default function ContactsPage() {
     }
   };
 
-  const handleDelete = (contactId: string) => {
-    if (!currentOrg) return;
+  const handleDelete = (contact: Contact) => {
+    const targetOrgId = contact.organization_id || currentOrg?.id;
+    if (!targetOrgId) return;
     setConfirmState({
       isOpen: true,
       title: 'Delete Contact',
@@ -197,7 +235,7 @@ export default function ContactsPage() {
       variant: 'danger',
       action: async () => {
         try {
-          await CRMService.deleteContact(contactId, currentOrg.id);
+          await CRMService.deleteContact(contact.id, targetOrgId);
           toast.success('Contact deleted successfully');
           await loadContacts();
         } catch (err: any) {
@@ -229,23 +267,29 @@ export default function ContactsPage() {
   const leadCount = contacts.filter((c) => c.status === 'lead').length;
   const partnerCount = contacts.filter((c) => c.status === 'partner').length;
 
+  const showOrgColumn = isSuper || effectiveOrgIds.length > 1;
+
   return (
     <AppShell>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Contacts Directory</h1>
-            <p className="text-sm text-slate-500 mt-0.5">
-              Manage customers, leads, and partner contacts for {currentOrg?.name}.
+            <h1 className="text-2xl font-semibold tracking-tight text-[#171B26]">Contacts Directory</h1>
+            <p className="text-[13px] text-[#697386] mt-0.5">
+              {isSuper && isMultiOrgActive
+                ? `Manage customers, leads, and partner contacts across ${
+                    isAllOrgsSelected ? 'all organizations' : `${effectiveOrgIds.length} selected organizations`
+                  }.`
+                : `Manage customers, leads, and partner contacts for ${currentOrg?.name}.`}
             </p>
           </div>
           {canCreate && (
             <button
               onClick={handleOpenCreate}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold shadow-sm transition-all"
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-[#3659C9] hover:bg-[#2B47A1] text-white text-[13px] font-medium shadow-[0_1px_2px_rgba(54,89,201,0.2)] transition-colors"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-3.5 h-3.5" />
               <span>Create Contact</span>
             </button>
           )}
@@ -253,75 +297,97 @@ export default function ContactsPage() {
 
         {/* Contacts KPI Quick Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center ring-1 ring-blue-500/10 flex-shrink-0">
-              <Users2 className="w-4 h-4" />
+          <div className="bg-white p-4 rounded-xl border border-blue-100/90 shadow-xs hover:border-blue-300 transition-all flex items-center space-x-3.5">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 border border-blue-200/70 flex items-center justify-center flex-shrink-0">
+              <Users2 className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total Directory</p>
-              <p className="text-base font-bold text-slate-900">{contacts.length}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total Directory</p>
+              <p className="text-2xl font-bold text-slate-900 tabular-nums">{contacts.length}</p>
             </div>
           </div>
 
-          <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center ring-1 ring-emerald-500/10 flex-shrink-0">
-              <UserCheck className="w-4 h-4" />
+          <div className="bg-white p-4 rounded-xl border border-emerald-100/90 shadow-xs hover:border-emerald-300 transition-all flex items-center space-x-3.5">
+            <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200/70 flex items-center justify-center flex-shrink-0">
+              <UserCheck className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Active Customers</p>
-              <p className="text-base font-bold text-emerald-600">{customerCount}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Active Customers</p>
+              <p className="text-2xl font-bold text-emerald-600 tabular-nums">{customerCount}</p>
             </div>
           </div>
 
-          <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center ring-1 ring-amber-500/10 flex-shrink-0">
-              <Target className="w-4 h-4" />
+          <div className="bg-white p-4 rounded-xl border border-amber-100/90 shadow-xs hover:border-amber-300 transition-all flex items-center space-x-3.5">
+            <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 border border-amber-200/70 flex items-center justify-center flex-shrink-0">
+              <Target className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Prospect Leads</p>
-              <p className="text-base font-bold text-amber-600">{leadCount}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Prospect Leads</p>
+              <p className="text-2xl font-bold text-amber-600 tabular-nums">{leadCount}</p>
             </div>
           </div>
 
-          <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center ring-1 ring-purple-500/10 flex-shrink-0">
-              <Sparkles className="w-4 h-4" />
+          <div className="bg-white p-4 rounded-xl border border-purple-100/90 shadow-xs hover:border-purple-300 transition-all flex items-center space-x-3.5">
+            <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 border border-purple-200/70 flex items-center justify-center flex-shrink-0">
+              <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Partners & Affiliates</p>
-              <p className="text-base font-bold text-purple-600">{partnerCount}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Partners & Affiliates</p>
+              <p className="text-2xl font-bold text-purple-700 tabular-nums">{partnerCount}</p>
             </div>
           </div>
         </div>
 
-        {/* Filter Bar with One-Click Quick Pills */}
-        <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
-          <div className="relative w-full md:w-80">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              placeholder="Search by name, company, email..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50/60 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-500 transition-colors"
-            />
+        {/* Filter Bar with Search, Organization Filter, and Quick Pills */}
+        <div className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1">
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search by name, company, email..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white placeholder:text-slate-400 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+              />
+            </div>
+
+            {/* Organization Dropdown Filter */}
+            {(isSuper || memberships.length > 1) && (
+              <div className="relative min-w-[200px]">
+                <select
+                  value={orgFilter}
+                  onChange={(e) => setOrgFilter(e.target.value)}
+                  className="w-full text-xs font-semibold py-1.5 px-3 rounded-lg border border-slate-200 bg-slate-50/50 hover:bg-slate-50 text-slate-800 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 cursor-pointer transition-colors"
+                >
+                  <option value="all">
+                    {isSuper ? `All Organizations (${memberships.length})` : 'All My Organizations'}
+                  </option>
+                  {memberships.map((m) => (
+                    <option key={m.organization.id} value={m.organization.id}>
+                      {m.organization.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center space-x-1.5 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+          <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 md:pb-0">
             {[
-              { id: 'all', label: 'All' },
-              { id: 'customer', label: 'Customers' },
-              { id: 'lead', label: 'Leads' },
-              { id: 'partner', label: 'Partners' },
-              { id: 'inactive', label: 'Inactive' },
+              { id: 'all', label: 'All', activeBg: 'bg-slate-900 text-white' },
+              { id: 'customer', label: 'Customers', activeBg: 'bg-emerald-600 text-white' },
+              { id: 'lead', label: 'Leads', activeBg: 'bg-amber-600 text-white' },
+              { id: 'partner', label: 'Partners', activeBg: 'bg-purple-600 text-white' },
+              { id: 'inactive', label: 'Inactive', activeBg: 'bg-slate-600 text-white' },
             ].map((pill) => (
               <button
                 key={pill.id}
                 onClick={() => setStatusFilter(pill.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all whitespace-nowrap ${
+                className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-all whitespace-nowrap ${
                   statusFilter === pill.id
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
+                    ? `${pill.activeBg} shadow-xs`
+                    : 'bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200'
                 }`}
               >
                 {pill.label}
@@ -331,126 +397,148 @@ export default function ContactsPage() {
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
+              <thead className="bg-[#FAFAFC] border-b border-[#E7EAF0] text-[#697386] font-medium uppercase tracking-wider text-[11px]">
                 <tr>
-                  <th className="py-3 px-4">Contact</th>
-                  <th className="py-3 px-4">Company & Title</th>
-                  <th className="py-3 px-4">Contact Details</th>
-                  <th className="py-3 px-4">Relationship Status</th>
-                  <th className="py-3 px-4">Added</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  {showOrgColumn && <th className="py-2.5 px-4">Organization</th>}
+                  <th className="py-2.5 px-4">Contact</th>
+                  <th className="py-2.5 px-4">Company & Title</th>
+                  <th className="py-2.5 px-4">Contact Details</th>
+                  <th className="py-2.5 px-4">Relationship Status</th>
+                  <th className="py-2.5 px-4">Added</th>
+                  <th className="py-2.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#E7EAF0]">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-slate-400">
+                    <td colSpan={showOrgColumn ? 7 : 6} className="py-12 text-center text-[#697386]">
                       Loading contacts...
                     </td>
                   </tr>
                 ) : contacts.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center">
-                      <Users2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                      <p className="text-sm font-medium text-slate-600">No contacts found</p>
-                      <p className="text-xs text-slate-400 mt-1">Get started by creating your first contact record.</p>
+                    <td colSpan={showOrgColumn ? 7 : 6} className="py-12 text-center">
+                      <Users2 className="w-8 h-8 text-[#BAC0CE] mx-auto mb-2" />
+                      <p className="text-sm font-medium text-[#171B26]">No contacts found</p>
+                      <p className="text-xs text-[#697386] mt-1">Get started by creating your first contact record.</p>
                     </td>
                   </tr>
                 ) : (
-                  contacts.map((contact) => (
-                    <tr key={contact.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3 px-4">
-                        <div className="flex items-center space-x-3">
-                          <div
-                            className={`w-8 h-8 rounded-full bg-gradient-to-tr ${getAvatarColor(
-                              contact.first_name + ' ' + contact.last_name
-                            )} text-white font-bold flex items-center justify-center text-[11px] shadow-xs flex-shrink-0`}
-                          >
-                            {contact.first_name?.[0]?.toUpperCase()}
-                            {contact.last_name?.[0]?.toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="font-semibold text-slate-900">
-                              {contact.first_name} {contact.last_name}
+                  contacts.map((contact) => {
+                    const orgName =
+                      contact.organization?.name ||
+                      memberships.find((m) => m.organization.id === contact.organization_id)?.organization.name ||
+                      'Organization';
+                    const orgLogo = contact.organization?.logo_url;
+
+                    return (
+                      <tr key={contact.id} className="hover:bg-[#F8F9FB] transition-colors">
+                        {showOrgColumn && (
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <div className="flex items-center space-x-2">
+                              <div className="w-5 h-5 rounded bg-[#F1F3F7] border border-[#E7EAF0] flex items-center justify-center text-[#3659C9] text-[10px] font-bold overflow-hidden flex-shrink-0">
+                                {orgLogo ? (
+                                  <img src={orgLogo} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  orgName.charAt(0).toUpperCase()
+                                )}
+                              </div>
+                              <span className="font-medium text-[#171B26] text-xs truncate max-w-[150px]">
+                                {orgName}
+                              </span>
                             </div>
-                            {contact.notes && (
-                              <div className="text-[11px] text-slate-500 truncate max-w-xs">{contact.notes}</div>
+                          </td>
+                        )}
+
+                        <td className="py-3 px-4">
+                          <div className="flex items-center space-x-2.5">
+                            <div className="w-7 h-7 rounded-full bg-[#E2EAFA] text-[#3659C9] font-medium flex items-center justify-center text-[11px] flex-shrink-0">
+                              {contact.first_name?.[0]?.toUpperCase()}
+                              {contact.last_name?.[0]?.toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="font-medium text-[#171B26] text-[13px]">
+                                {contact.first_name} {contact.last_name}
+                              </div>
+                              {contact.notes && (
+                                <div className="text-[11px] text-[#697386] truncate max-w-xs">{contact.notes}</div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="text-[#171B26] font-medium text-[13px]">{contact.company_name || '—'}</div>
+                          <div className="text-[11px] text-[#697386]">{contact.job_title || 'No Title'}</div>
+                        </td>
+                        <td className="py-3 px-4 space-y-0.5">
+                          {contact.email && (
+                            <div className="flex items-center text-[#171B26] text-xs">
+                              <Mail className="w-3 h-3 text-[#697386] mr-1.5" />
+                              <span>{contact.email}</span>
+                            </div>
+                          )}
+                          {contact.phone && (
+                            <div className="flex items-center text-[#697386] text-[11px]">
+                              <Phone className="w-3 h-3 text-[#697386] mr-1.5" />
+                              <span>{contact.phone}</span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center space-x-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider ${
+                              contact.status === 'customer'
+                                ? 'bg-[#ECFDF5] text-[#047857] border border-[#A7F3D0]'
+                                : contact.status === 'partner'
+                                ? 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
+                                : contact.status === 'lead'
+                                ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
+                                : 'bg-[#F7F8FA] text-[#697386] border border-[#E7EAF0]'
+                            }`}>
+                              {contact.status}
+                            </span>
+                            {contact.status === 'lead' && (
+                              <Link
+                                href="/leads"
+                                className="text-[11px] text-[#3659C9] hover:underline font-medium flex items-center"
+                              >
+                                <span>Leads</span>
+                                <ArrowRight className="w-2.5 h-2.5 ml-0.5" />
+                              </Link>
                             )}
                           </div>
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <div className="text-slate-800 font-medium">{contact.company_name || '—'}</div>
-                        <div className="text-[11px] text-slate-500">{contact.job_title || 'No Title'}</div>
-                      </td>
-                      <td className="py-3.5 px-4 space-y-0.5">
-                        {contact.email && (
-                          <div className="flex items-center text-slate-600">
-                            <Mail className="w-3 h-3 text-slate-400 mr-1.5" />
-                            <span>{contact.email}</span>
+                        </td>
+                        <td className="py-3 px-4 text-[#697386] text-xs tabular-nums">
+                          {new Date(contact.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end space-x-1">
+                            {canUpdate && (
+                              <button
+                                onClick={() => handleOpenEdit(contact)}
+                                className="p-1.5 text-[#697386] hover:text-[#171B26] rounded hover:bg-[#F1F3F7] transition-colors"
+                                title="Edit"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button
+                                onClick={() => handleDelete(contact)}
+                                className="p-1.5 text-[#697386] hover:text-[#B91C1C] rounded hover:bg-[#FEF2F2] transition-colors"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
-                        )}
-                        {contact.phone && (
-                          <div className="flex items-center text-slate-500 text-[11px]">
-                            <Phone className="w-3 h-3 text-slate-400 mr-1.5" />
-                            <span>{contact.phone}</span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center space-x-2">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
-                            contact.status === 'customer'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : contact.status === 'partner'
-                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                              : contact.status === 'lead'
-                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                              : 'bg-slate-100 text-slate-600 border border-slate-200'
-                          }`}>
-                            {contact.status}
-                          </span>
-                          {contact.status === 'lead' && (
-                            <Link
-                              href="/leads"
-                              className="text-[10px] text-primary-600 hover:text-primary-800 font-medium flex items-center hover:underline"
-                            >
-                              <span>Leads</span>
-                              <ArrowRight className="w-2.5 h-2.5 ml-0.5" />
-                            </Link>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4 text-slate-500">
-                        {new Date(contact.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end space-x-1">
-                          {canUpdate && (
-                            <button
-                              onClick={() => handleOpenEdit(contact)}
-                              className="p-1.5 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100 transition-colors"
-                              title="Edit"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {canDelete && (
-                            <button
-                              onClick={() => handleDelete(contact.id)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition-colors"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -459,21 +547,40 @@ export default function ContactsPage() {
 
         {/* Create / Edit Modal */}
         {isModalOpen && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-lg w-full max-h-[90vh] overflow-y-auto animate-in fade-in-50 zoom-in-95 duration-150">
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
-                <h3 className="font-bold text-slate-900 text-base">
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#E7EAF0] max-w-lg w-full max-h-[90vh] overflow-y-auto animate-in fade-in-50 zoom-in-95 duration-150">
+              <div className="p-4 border-b border-[#E7EAF0] flex items-center justify-between sticky top-0 bg-white z-10">
+                <h3 className="font-semibold text-[#171B26] text-[15px]">
                   {editingContact ? 'Edit Contact' : 'Create New Contact'}
                 </h3>
                 <button
                   onClick={() => setIsModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-600 p-1"
+                  className="text-[#697386] hover:text-[#171B26] p-1 rounded"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
               <form onSubmit={handleSubmit} className="p-5 space-y-4">
+                {isSuper && !editingContact && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Organization *
+                    </label>
+                    <select
+                      value={formData.organization_id}
+                      onChange={(e) => setFormData({ ...formData, organization_id: e.target.value })}
+                      className="w-full text-xs rounded-lg border border-slate-300 p-2 bg-white focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                    >
+                      {memberships.filter((m) => m.status === 'approved').map((m) => (
+                        <option key={m.organization.id} value={m.organization.id}>
+                          {m.organization.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">First Name *</label>
@@ -643,17 +750,17 @@ export default function ContactsPage() {
                   />
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
+                <div className="pt-3 border-t border-[#E7EAF0] flex items-center justify-end space-x-2">
                   <button
                     type="button"
                     onClick={() => setIsModalOpen(false)}
-                    className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                    className="px-3 py-1.5 text-[12px] font-medium text-[#171B26] hover:bg-[#F1F3F7] rounded-md border border-[#E7EAF0] transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-sm transition-colors"
+                    className="px-3.5 py-1.5 text-[12px] font-medium text-white bg-[#3659C9] hover:bg-[#2B47A1] rounded-md shadow-[0_1px_2px_rgba(54,89,201,0.2)] transition-colors"
                   >
                     {editingContact ? 'Save Changes' : formData.status === 'lead' ? 'Save Contact & Create Lead' : 'Create Contact'}
                   </button>
