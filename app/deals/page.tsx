@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../../components/layout/app-shell';
 import { useWorkspace } from '../../components/providers/workspace-provider';
 import { CRMService } from '../../lib/services/crm-service';
-import { Deal, Pipeline, PipelineStage, Contact } from '../../lib/types/crm';
+import { Deal, Pipeline, PipelineStage, Contact, Task } from '../../lib/types/crm';
 import { hasPermission } from '../../lib/permissions';
 import { toast } from '../../lib/stores/toast-store';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
@@ -32,6 +32,9 @@ import {
   MoreVertical,
   ExternalLink,
   Layers,
+  Eye,
+  CheckSquare,
+  Circle,
 } from 'lucide-react';
 
 export default function DealsPage() {
@@ -61,6 +64,13 @@ export default function DealsPage() {
 
   // Active dropdown card menu
   const [openMenuDealId, setOpenMenuDealId] = useState<string | null>(null);
+
+  // Deal Details & Quick Status Actions Modal
+  const [viewingDeal, setViewingDeal] = useState<Deal | null>(null);
+  const [dealTasks, setDealTasks] = useState<Task[]>([]);
+  const [isAddingTask, setIsAddingTask] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [isSavingDealTask, setIsSavingDealTask] = useState(false);
 
   // New Deal Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -121,6 +131,24 @@ export default function DealsPage() {
       loadPipelineData();
     }
   }, [orgIdsKey, loadPipelineData]);
+
+  // Load connected tasks when viewing a deal
+  const viewingDealOrgId = viewingDeal?.organization_id || currentOrg?.id;
+  const viewingDealId = viewingDeal?.id;
+
+  useEffect(() => {
+    if (viewingDealId && viewingDealOrgId) {
+      CRMService.getTasks(viewingDealOrgId)
+        .then((allTasks) => {
+          setDealTasks(allTasks.filter((t) => t.related_type === 'deal' && t.related_id === viewingDealId));
+        })
+        .catch(() => {});
+    } else {
+      setDealTasks([]);
+      setIsAddingTask(false);
+      setNewTaskTitle('');
+    }
+  }, [viewingDealId, viewingDealOrgId]);
 
   // Close card menu on global click
   useEffect(() => {
@@ -365,72 +393,75 @@ export default function DealsPage() {
         {/* Pipeline Summary KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div
-            onClick={() => setActiveView('pipeline')}
-            className={`p-3.5 rounded-lg border transition-all cursor-pointer ${
+            onClick={() => {
+              setActiveView('pipeline');
+              setArchiveSearch('');
+            }}
+            className={`p-4 rounded-xl border transition-all cursor-pointer ${
               activeView === 'pipeline'
                 ? 'bg-[#F0F4FE]/60 border-[#3659C9] ring-1 ring-[#3659C9] shadow-xs'
-                : 'bg-white border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-[#BAC0CE]'
+                : 'bg-white border-[#E7EAF0] shadow-xs hover:border-[#BAC0CE]'
             }`}
           >
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-md bg-[#F1F3F7] text-[#3659C9] flex items-center justify-center flex-shrink-0">
-                <BarChart3 className="w-4 h-4" />
+            <div className="flex items-center space-x-3.5">
+              <div className="w-10 h-10 rounded-lg bg-[#F1F3F7] text-[#3659C9] flex items-center justify-center flex-shrink-0">
+                <BarChart3 className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-medium uppercase tracking-wider text-[#697386]">Active Pipeline</p>
-                <p className="text-lg font-semibold text-[#171B26] truncate tabular-nums">₹{totalPipelineValue.toLocaleString('en-IN')}</p>
-                <p className="text-[11px] text-[#697386]">{openDeals.length} open opportunities</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#697386]">Active Pipeline</p>
+                <p className="text-xl font-bold text-[#171B26] truncate tabular-nums mt-0.5">₹{totalPipelineValue.toLocaleString('en-IN')}</p>
+                <p className="text-xs text-[#697386] mt-0.5">{openDeals.length} open opportunities</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-3.5 rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-md bg-[#ECFDF5] text-[#047857] flex items-center justify-center flex-shrink-0">
-              <DollarSign className="w-4 h-4" />
+          <div className="bg-white p-4 rounded-xl border border-[#E7EAF0] shadow-xs flex items-center space-x-3.5">
+            <div className="w-10 h-10 rounded-lg bg-[#ECFDF5] text-[#047857] flex items-center justify-center flex-shrink-0">
+              <DollarSign className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-medium uppercase tracking-wider text-[#697386]">Won Revenue</p>
-              <p className="text-lg font-semibold text-[#047857] truncate tabular-nums">₹{wonValue.toLocaleString('en-IN')}</p>
-              <p className="text-[11px] text-[#047857] font-medium">{wonDeals.length} closed won</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#697386]">Won Revenue</p>
+              <p className="text-xl font-bold text-[#047857] truncate tabular-nums mt-0.5">₹{wonValue.toLocaleString('en-IN')}</p>
+              <p className="text-xs text-[#047857] font-medium mt-0.5">{wonDeals.length} closed won</p>
             </div>
           </div>
 
           <div
             onClick={() => setActiveView('lost')}
-            className={`p-3.5 rounded-lg border transition-all cursor-pointer ${
+            className={`p-4 rounded-xl border transition-all cursor-pointer ${
               activeView === 'lost'
                 ? 'bg-[#FEF2F2]/60 border-[#B91C1C] ring-1 ring-[#B91C1C] shadow-xs'
-                : 'bg-white border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-[#BAC0CE]'
+                : 'bg-white border-[#E7EAF0] shadow-xs hover:border-[#BAC0CE]'
             }`}
           >
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-md bg-[#FEF2F2] text-[#B91C1C] flex items-center justify-center flex-shrink-0">
-                <XCircle className="w-4 h-4" />
+            <div className="flex items-center space-x-3.5">
+              <div className="w-10 h-10 rounded-lg bg-[#FEF2F2] text-[#B91C1C] flex items-center justify-center flex-shrink-0">
+                <XCircle className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-medium uppercase tracking-wider text-[#697386]">Lost Deals</p>
-                <p className="text-lg font-semibold text-[#B91C1C] truncate tabular-nums">₹{lostValue.toLocaleString('en-IN')}</p>
-                <p className="text-[11px] text-[#697386]">{lostDeals.length} closed lost</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#697386]">Lost Deals</p>
+                <p className="text-xl font-bold text-[#B91C1C] truncate tabular-nums mt-0.5">₹{lostValue.toLocaleString('en-IN')}</p>
+                <p className="text-xs text-[#697386] mt-0.5">{lostDeals.length} closed lost</p>
               </div>
             </div>
           </div>
 
           <div
             onClick={() => setActiveView('inactive')}
-            className={`p-3.5 rounded-lg border transition-all cursor-pointer ${
+            className={`p-4 rounded-xl border transition-all cursor-pointer ${
               activeView === 'inactive'
                 ? 'bg-[#F1F3F7] border-[#697386] ring-1 ring-[#697386] shadow-xs'
-                : 'bg-white border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-[#BAC0CE]'
+                : 'bg-white border-[#E7EAF0] shadow-xs hover:border-[#BAC0CE]'
             }`}
           >
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-md bg-[#F1F3F7] text-[#697386] flex items-center justify-center flex-shrink-0">
-                <Archive className="w-4 h-4" />
+            <div className="flex items-center space-x-3.5">
+              <div className="w-10 h-10 rounded-lg bg-[#F1F3F7] text-[#697386] flex items-center justify-center flex-shrink-0">
+                <Archive className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-medium uppercase tracking-wider text-[#697386]">Inactive / On-Hold</p>
-                <p className="text-lg font-semibold text-[#171B26] truncate tabular-nums">₹{inactiveValue.toLocaleString('en-IN')}</p>
-                <p className="text-[11px] text-[#697386]">{inactiveDeals.length} dormant</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#697386]">Inactive / On-Hold</p>
+                <p className="text-xl font-bold text-[#171B26] truncate tabular-nums mt-0.5">₹{inactiveValue.toLocaleString('en-IN')}</p>
+                <p className="text-xs text-[#697386] mt-0.5">{inactiveDeals.length} dormant</p>
               </div>
             </div>
           </div>
@@ -594,8 +625,9 @@ export default function DealsPage() {
                                 draggable={canUpdate}
                                 onDragStart={(e) => handleDragStart(e, deal.id)}
                                 onDragEnd={handleDragEnd}
-                                className={`bg-white p-3 rounded-md border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-[#BAC0CE] transition-all group relative border-l-2 ${
-                                  canUpdate ? 'cursor-grab active:cursor-grabbing' : ''
+                                onClick={() => setViewingDeal(deal)}
+                                className={`bg-white p-3 rounded-md border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-[#BAC0CE] hover:shadow-xs transition-all group relative border-l-2 cursor-pointer ${
+                                  canUpdate ? 'active:cursor-grabbing' : ''
                                 } ${isBeingDragged ? 'opacity-40 scale-95 border-dashed border-[#3659C9]' : ''}`}
                                 style={{
                                   borderLeftColor: isWon ? '#047857' : stageColor,
@@ -604,17 +636,20 @@ export default function DealsPage() {
                                 <div className="flex items-start justify-between">
                                   <div className="flex items-start space-x-1.5 flex-1 pr-1">
                                     {canUpdate && (
-                                      <GripVertical className="w-3.5 h-3.5 text-[#9AA2B1] group-hover:text-[#697386] mt-0.5 flex-shrink-0" />
+                                      <GripVertical
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-4 h-4 text-[#9AA2B1] group-hover:text-[#697386] mt-0.5 flex-shrink-0 cursor-grab"
+                                      />
                                     )}
                                     <div>
-                                      <h5 className="font-medium text-[#171B26] text-[13px] leading-snug">
+                                      <h5 className="font-semibold text-[#171B26] text-sm leading-snug group-hover:text-[#3659C9] transition-colors">
                                         {deal.title}
                                       </h5>
                                       {deal.organization?.name && (
                                         <div className="mt-1">
-                                          <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#F1F3F7] text-[#697386] border border-[#E7EAF0]">
-                                            <Building className="w-2.5 h-2.5 text-[#9AA2B1]" />
-                                            <span className="truncate max-w-[130px]">{deal.organization.name}</span>
+                                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-xs font-medium bg-[#F1F3F7] text-[#697386] border border-[#E7EAF0]">
+                                            <Building className="w-3 h-3 text-[#9AA2B1]" />
+                                            <span className="truncate max-w-[140px]">{deal.organization.name}</span>
                                           </span>
                                         </div>
                                       )}
@@ -622,40 +657,51 @@ export default function DealsPage() {
                                   </div>
 
                                   {/* Quick Actions Menu Trigger */}
-                                  <div className="relative">
+                                  <div className="relative" onClick={(e) => e.stopPropagation()}>
                                     <button
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setOpenMenuDealId(isMenuOpen ? null : deal.id);
                                       }}
-                                      className="p-1 rounded text-[#697386] hover:text-[#171B26] hover:bg-[#F1F3F7] transition-colors"
-                                      title="Deal Options"
+                                      className="p-1 rounded-md border border-transparent group-hover:border-[#E7EAF0] group-hover:bg-[#F7F8FA] text-[#697386] hover:text-[#171B26] transition-colors"
+                                      title="Deal Options (Mark as Lost, Inactive, Delete)"
                                     >
-                                      <MoreVertical className="w-3.5 h-3.5" />
+                                      <MoreVertical className="w-4 h-4" />
                                     </button>
 
                                     {/* Dropdown Options */}
                                     {isMenuOpen && (
                                       <div
                                         onClick={(e) => e.stopPropagation()}
-                                        className="absolute right-0 top-full mt-1 w-44 bg-white rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.08)] border border-[#E7EAF0] py-1 z-40 text-left animate-in fade-in-50 zoom-in-95 duration-100"
+                                        className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.12)] border border-[#E7EAF0] py-1 z-40 text-left animate-in fade-in-50 zoom-in-95 duration-100"
                                       >
+                                        <button
+                                          onClick={() => {
+                                            setOpenMenuDealId(null);
+                                            setViewingDeal(deal);
+                                          }}
+                                          className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-[#171B26] hover:bg-[#F1F3F7] font-medium transition-colors"
+                                        >
+                                          <Eye className="w-4 h-4 text-[#3659C9]" />
+                                          <span>View Deal Details</span>
+                                        </button>
+                                        <div className="my-1 border-t border-[#E7EAF0]" />
                                         {canUpdate && (
                                           <>
                                             <button
                                               onClick={() => handleMarkStatus(deal.id, 'lost')}
-                                              className="w-full flex items-center space-x-2 px-3 py-1.5 text-[12px] text-[#B91C1C] hover:bg-[#FEF2F2] font-medium transition-colors"
+                                              className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-[#B91C1C] hover:bg-[#FEF2F2] font-medium transition-colors"
                                             >
-                                              <XCircle className="w-3.5 h-3.5 text-[#B91C1C]" />
+                                              <XCircle className="w-4 h-4 text-[#B91C1C]" />
                                               <span>Mark as Lost</span>
                                             </button>
 
                                             <button
                                               onClick={() => handleMarkStatus(deal.id, 'inactive')}
-                                              className="w-full flex items-center space-x-2 px-3 py-1.5 text-[12px] text-[#697386] hover:text-[#171B26] hover:bg-[#F1F3F7] font-medium transition-colors"
+                                              className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-[#475569] hover:bg-[#F1F3F7] font-medium transition-colors"
                                             >
-                                              <PauseCircle className="w-3.5 h-3.5 text-[#697386]" />
+                                              <PauseCircle className="w-4 h-4 text-[#475569]" />
                                               <span>Mark as Inactive</span>
                                             </button>
                                             <div className="my-1 border-t border-[#E7EAF0]" />
@@ -668,9 +714,9 @@ export default function DealsPage() {
                                               setOpenMenuDealId(null);
                                               handleDelete(deal.id);
                                             }}
-                                            className="w-full flex items-center space-x-2 px-3 py-1.5 text-[12px] text-[#B91C1C] hover:bg-[#FEF2F2] font-medium transition-colors"
+                                            className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-[#B91C1C] hover:bg-[#FEF2F2] font-medium transition-colors"
                                           >
-                                            <Trash2 className="w-3.5 h-3.5" />
+                                            <Trash2 className="w-4 h-4" />
                                             <span>Delete Deal</span>
                                           </button>
                                         )}
@@ -680,12 +726,12 @@ export default function DealsPage() {
                                 </div>
 
                                 <div className="mt-2.5 flex items-center justify-between text-xs">
-                                  <span className="font-semibold text-[#171B26] bg-[#F7F8FA] px-1.5 py-0.5 rounded border border-[#E7EAF0] tabular-nums text-[12px]">
+                                  <span className="font-bold text-[#171B26] bg-[#F7F8FA] px-2 py-0.5 rounded border border-[#E7EAF0] tabular-nums text-xs">
                                     ₹{Number(deal.value).toLocaleString('en-IN')}
                                   </span>
                                   {deal.expected_close_date && (
-                                    <span className="text-[10px] text-[#697386] flex items-center font-medium tabular-nums">
-                                      <Calendar className="w-3 h-3 mr-1 text-[#9AA2B1]" />
+                                    <span className="text-xs text-[#697386] flex items-center font-medium tabular-nums">
+                                      <Calendar className="w-3.5 h-3.5 mr-1 text-[#9AA2B1]" />
                                       {deal.expected_close_date}
                                     </span>
                                   )}
@@ -693,8 +739,8 @@ export default function DealsPage() {
 
                                 {/* Contact Info */}
                                 {deal.contact && (
-                                  <div className="mt-2 pt-2 border-t border-[#E7EAF0] text-[11px] text-[#697386] flex items-center space-x-1.5 truncate">
-                                    <div className="w-4 h-4 rounded-full bg-[#F1F3F7] text-[9px] font-semibold flex items-center justify-center text-[#697386] flex-shrink-0 border border-[#E7EAF0]">
+                                  <div className="mt-2 pt-2 border-t border-[#E7EAF0] text-xs text-[#697386] flex items-center space-x-1.5 truncate">
+                                    <div className="w-4 h-4 rounded-full bg-[#F1F3F7] text-[10px] font-semibold flex items-center justify-center text-[#697386] flex-shrink-0 border border-[#E7EAF0]">
                                       {deal.contact.first_name?.[0] || 'C'}
                                     </div>
                                     <span className="truncate">
@@ -703,10 +749,10 @@ export default function DealsPage() {
                                   </div>
                                 )}
 
-                                {/* Status Pill & Stage Select */}
-                                <div className="mt-2 pt-2 border-t border-[#E7EAF0] flex items-center justify-between">
+                                {/* Status Pill & Stage/Status Select */}
+                                <div className="mt-2 pt-2 border-t border-[#E7EAF0] flex items-center justify-between gap-1">
                                   <span
-                                    className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+                                    className={`text-xs font-medium px-2 py-0.5 rounded-full uppercase tracking-wider ${
                                       isWon
                                         ? 'bg-[#ECFDF5] text-[#047857] border border-[#047857]/20'
                                         : 'bg-[#F0F4FE] text-[#3659C9] border border-[#3659C9]/20'
@@ -715,18 +761,36 @@ export default function DealsPage() {
                                     {isWon ? 'Won' : 'Open'}
                                   </span>
 
-                                  {/* Stage dropdown for accessibility/click fallback */}
+                                  {/* Direct Stage / Status dropdown */}
                                   {canUpdate && (
                                     <select
                                       value={deal.stage_id}
-                                      onChange={(e) => handleStageChange(deal.id, e.target.value)}
-                                      className="text-[10px] bg-white hover:bg-[#F1F3F7] text-[#697386] border border-[#E7EAF0] rounded py-0.5 px-1 font-medium focus:outline-none transition-colors"
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        const val = e.target.value;
+                                        if (val === 'action:lost') {
+                                          handleMarkStatus(deal.id, 'lost');
+                                        } else if (val === 'action:inactive') {
+                                          handleMarkStatus(deal.id, 'inactive');
+                                        } else {
+                                          handleStageChange(deal.id, val);
+                                        }
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="text-[10px] bg-[#F7F8FA] hover:bg-[#F1F3F7] text-[#171B26] border border-[#E7EAF0] rounded py-0.5 px-1 font-medium focus:outline-none cursor-pointer transition-colors max-w-[130px] truncate"
+                                      title="Change stage or status"
                                     >
-                                      {activePipeline.stages.map((s) => (
-                                        <option key={s.id} value={s.id}>
-                                          &rarr; {s.name}
-                                        </option>
-                                      ))}
+                                      <optgroup label="Move Stage">
+                                        {activePipeline.stages.map((s) => (
+                                          <option key={s.id} value={s.id}>
+                                            &rarr; {s.name}
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                      <optgroup label="Change Status">
+                                        <option value="action:lost">❌ Mark as Lost</option>
+                                        <option value="action:inactive">⏸ Mark as Inactive</option>
+                                      </optgroup>
                                     </select>
                                   )}
                                 </div>
@@ -1003,8 +1067,8 @@ export default function DealsPage() {
         {/* Modal: New Deal */}
         {isModalOpen && (
           <div className="fixed inset-0 bg-[#171B26]/40 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#E7EAF0] max-w-md w-full overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
-              <div className="px-5 py-4 border-b border-[#E7EAF0] flex items-center justify-between">
+            <div className="bg-white rounded-xl shadow-[0_12px_36px_rgba(0,0,0,0.15)] border border-[#E7EAF0] max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
+              <div className="px-6 py-4 border-b border-[#E7EAF0] flex items-center justify-between flex-shrink-0 bg-[#F8FAFC]">
                 <h3 className="font-semibold text-[#171B26] text-sm">New Deal</h3>
                 <button
                   onClick={() => setIsModalOpen(false)}
@@ -1014,7 +1078,8 @@ export default function DealsPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-5 space-y-4">
+              <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
+                <div className="p-6 space-y-4 overflow-y-auto flex-1 no-scrollbar">
                 {isSuper && memberships.length > 0 && (
                   <div>
                     <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">
@@ -1098,23 +1163,354 @@ export default function DealsPage() {
                     ))}
                   </select>
                 </div>
+              </div>
 
-                <div className="pt-3 border-t border-[#E7EAF0] flex items-center justify-end space-x-2">
+              <div className="px-6 py-4 border-t border-[#E7EAF0] bg-slate-50 flex items-center justify-end space-x-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-3.5 py-2 text-[13px] font-medium text-[#697386] hover:text-[#171B26] hover:bg-[#F1F3F7] rounded-md transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-[13px] font-medium text-white bg-[#3659C9] hover:bg-[#2B47A1] rounded-md shadow-xs transition-colors"
+                >
+                  Create Deal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: View & Manage Deal Actions */}
+      {viewingDeal && (
+        <div className="fixed inset-0 bg-[#171B26]/40 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-[0_12px_36px_rgba(0,0,0,0.15)] border border-[#E7EAF0] max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-[#E7EAF0] flex items-center justify-between flex-shrink-0 bg-[#F8FAFC]">
+              <div>
+                <h3 className="font-semibold text-[#171B26] text-base">{viewingDeal.title}</h3>
+                <p className="text-[12px] text-[#697386] mt-0.5">
+                  {viewingDeal.organization?.name || 'Organization Deal'}
+                </p>
+              </div>
+              <button
+                onClick={() => setViewingDeal(null)}
+                className="text-[#697386] hover:text-[#171B26] p-1.5 rounded-md hover:bg-[#F1F3F7] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto flex-1 no-scrollbar">
+                {/* Key Metrics Grid */}
+                <div className="grid grid-cols-2 gap-3 p-3.5 bg-[#F7F8FA] rounded-lg border border-[#E7EAF0]">
+                  <div>
+                    <span className="text-[11px] font-medium text-[#697386] uppercase tracking-wider">Deal Value</span>
+                    <p className="text-xl font-bold text-[#171B26] tabular-nums mt-0.5">
+                      ₹{Number(viewingDeal.value).toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-medium text-[#697386] uppercase tracking-wider">Current Status</span>
+                    <div className="mt-1">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider ${
+                          viewingDeal.status === 'won'
+                            ? 'bg-[#ECFDF5] text-[#047857] border border-[#A7F3D0]'
+                            : viewingDeal.status === 'lost'
+                            ? 'bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]'
+                            : viewingDeal.status === 'inactive'
+                            ? 'bg-[#F1F3F7] text-[#475569] border border-[#CBD5E1]'
+                            : 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
+                        }`}
+                      >
+                        {viewingDeal.status === 'won'
+                          ? 'Closed Won'
+                          : viewingDeal.status === 'lost'
+                          ? 'Closed Lost'
+                          : viewingDeal.status === 'inactive'
+                          ? 'Inactive / On-Hold'
+                          : 'Active Opportunity'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Deal Details */}
+                <div className="space-y-2 text-xs">
+                  {viewingDeal.expected_close_date && (
+                    <div className="flex justify-between py-1.5 border-b border-[#E7EAF0]">
+                      <span className="text-[#697386]">Expected Closing Date:</span>
+                      <span className="font-medium text-[#171B26] tabular-nums">{viewingDeal.expected_close_date}</span>
+                    </div>
+                  )}
+                  {viewingDeal.contact && (
+                    <div className="flex justify-between py-1.5 border-b border-[#E7EAF0]">
+                      <span className="text-[#697386]">Associated Contact:</span>
+                      <span className="font-medium text-[#171B26]">
+                        {viewingDeal.contact.first_name} {viewingDeal.contact.last_name}
+                        {viewingDeal.contact.company_name ? ` (${viewingDeal.contact.company_name})` : ''}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Move Stage Selector (Active Pipeline) */}
+                {canUpdate && activePipeline && viewingDeal.status === 'open' && (
+                  <div>
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">
+                      Pipeline Stage
+                    </label>
+                    <select
+                      value={viewingDeal.stage_id}
+                      onChange={async (e) => {
+                        const newStageId = e.target.value;
+                        await handleStageChange(viewingDeal.id, newStageId);
+                        setViewingDeal((prev) => (prev ? { ...prev, stage_id: newStageId } : null));
+                      }}
+                      className="w-full text-xs py-2 px-3 rounded-lg border border-[#E7EAF0] bg-white text-[#171B26] focus:outline-none focus:border-[#3659C9]"
+                    >
+                      {activePipeline.stages.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.probability}%)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Connected Deal Tasks & Follow-ups */}
+                <div className="pt-2 border-t border-[#E7EAF0]">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center space-x-1.5">
+                      <CheckSquare className="w-3.5 h-3.5 text-[#3659C9]" />
+                      <span className="text-[12px] font-semibold text-[#171B26]">Deal Tasks & Follow-ups</span>
+                      <span className="text-[11px] text-[#697386] tabular-nums">({dealTasks.length})</span>
+                    </div>
+                    {canCreate && (
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingTask(!isAddingTask)}
+                        className="text-[11px] text-[#3659C9] hover:underline font-medium flex items-center space-x-1"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Add Task</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {isAddingTask && (
+                    <div className="flex items-center space-x-2 mb-2 p-2 bg-[#F7F8FA] rounded-md border border-[#E7EAF0]">
+                      <input
+                        type="text"
+                        placeholder="e.g. Follow up on contract, send quotation..."
+                        value={newTaskTitle}
+                        onChange={(e) => setNewTaskTitle(e.target.value)}
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (!newTaskTitle.trim() || !currentUser || !viewingDealOrgId) return;
+                            setIsSavingDealTask(true);
+                            try {
+                              const newTask = await CRMService.createTask(
+                                viewingDealOrgId,
+                                {
+                                  title: newTaskTitle.trim(),
+                                  related_type: 'deal',
+                                  related_id: viewingDeal.id,
+                                  due_date: new Date(Date.now() + 2 * 86400000).toISOString(),
+                                },
+                                currentUser.id
+                              );
+                              setDealTasks((prev) => [newTask, ...prev]);
+                              setNewTaskTitle('');
+                              setIsAddingTask(false);
+                              toast.success('Task connected to deal!');
+                            } catch (err: any) {
+                              toast.error(err.message || 'Failed to add task');
+                            } finally {
+                              setIsSavingDealTask(false);
+                            }
+                          }
+                        }}
+                        className="flex-1 text-xs py-1.5 px-2.5 rounded border border-[#E7EAF0] bg-white text-[#171B26] focus:outline-none focus:border-[#3659C9]"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        disabled={isSavingDealTask || !newTaskTitle.trim()}
+                        onClick={async () => {
+                          if (!newTaskTitle.trim() || !currentUser || !viewingDealOrgId) return;
+                          setIsSavingDealTask(true);
+                          try {
+                            const newTask = await CRMService.createTask(
+                              viewingDealOrgId,
+                              {
+                                title: newTaskTitle.trim(),
+                                related_type: 'deal',
+                                related_id: viewingDeal.id,
+                                due_date: new Date(Date.now() + 2 * 86400000).toISOString(),
+                              },
+                              currentUser.id
+                            );
+                            setDealTasks((prev) => [newTask, ...prev]);
+                            setNewTaskTitle('');
+                            setIsAddingTask(false);
+                            toast.success('Task connected to deal!');
+                          } catch (err: any) {
+                            toast.error(err.message || 'Failed to add task');
+                          } finally {
+                            setIsSavingDealTask(false);
+                          }
+                        }}
+                        className="px-2.5 py-1.5 text-xs font-medium bg-[#3659C9] text-white rounded hover:bg-[#2B47A1] transition-colors disabled:opacity-50"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  )}
+
+                  {dealTasks.length === 0 ? (
+                    <p className="text-[11px] text-[#9AA2B1] italic">No active tasks connected to this deal.</p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                      {dealTasks.map((t) => (
+                        <div
+                          key={t.id}
+                          className="flex items-center justify-between p-2 rounded bg-[#F7F8FA] border border-[#E7EAF0] text-xs"
+                        >
+                          <div className="flex items-center space-x-2 truncate">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const nextStatus = t.status === 'completed' ? 'todo' : 'completed';
+                                setDealTasks((prev) =>
+                                  prev.map((item) => (item.id === t.id ? { ...item, status: nextStatus } : item))
+                                );
+                                if (viewingDealOrgId) {
+                                  await CRMService.updateTask(t.id, viewingDealOrgId, { status: nextStatus });
+                                }
+                              }}
+                            >
+                              {t.status === 'completed' ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-[#047857]" />
+                              ) : (
+                                <Circle className="w-3.5 h-3.5 text-[#BAC0CE] hover:text-[#3659C9]" />
+                              )}
+                            </button>
+                            <span className={t.status === 'completed' ? 'line-through text-[#9AA2B1]' : 'text-[#171B26]'}>
+                              {t.title}
+                            </span>
+                          </div>
+                          {t.due_date && (
+                            <span className="text-[10px] text-[#697386] tabular-nums flex-shrink-0">
+                              {new Date(t.due_date).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Status Action Buttons */}
+                {canUpdate && (
+                  <div className="pt-2">
+                    <label className="block text-[12px] font-semibold text-[#171B26] mb-2">
+                      Change Deal Status
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {viewingDeal.status !== 'lost' && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await handleMarkStatus(viewingDeal.id, 'lost');
+                            setViewingDeal(null);
+                          }}
+                          className="flex items-center justify-center space-x-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#B91C1C] border border-[#FECACA] transition-colors"
+                        >
+                          <XCircle className="w-4 h-4 text-[#B91C1C]" />
+                          <span>Mark as Lost</span>
+                        </button>
+                      )}
+
+                      {viewingDeal.status !== 'inactive' && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await handleMarkStatus(viewingDeal.id, 'inactive');
+                            setViewingDeal(null);
+                          }}
+                          className="flex items-center justify-center space-x-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#F1F3F7] hover:bg-[#E2E8F0] text-[#334155] border border-[#CBD5E1] transition-colors"
+                        >
+                          <PauseCircle className="w-4 h-4 text-[#475569]" />
+                          <span>Mark as Inactive</span>
+                        </button>
+                      )}
+
+                      {(viewingDeal.status === 'lost' || viewingDeal.status === 'inactive') && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await handleReactivateDeal(viewingDeal.id);
+                            setViewingDeal(null);
+                          }}
+                          className="col-span-2 flex items-center justify-center space-x-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#1D4ED8] border border-[#BFDBFE] transition-colors"
+                        >
+                          <ArrowRight className="w-4 h-4 text-[#1D4ED8]" />
+                          <span>Reactivate to Active Pipeline</span>
+                        </button>
+                      )}
+
+                      {viewingDeal.status === 'open' && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const wonStage = activePipeline?.stages?.find((s) => s.probability === 100) || activePipeline?.stages?.[activePipeline.stages.length - 1];
+                            if (wonStage) {
+                              await handleStageChange(viewingDeal.id, wonStage.id);
+                            }
+                            setViewingDeal(null);
+                          }}
+                          className="flex items-center justify-center space-x-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#ECFDF5] hover:bg-[#D1FAE5] text-[#047857] border border-[#A7F3D0] transition-colors"
+                        >
+                          <CheckCircle2 className="w-4 h-4 text-[#047857]" />
+                          <span>Mark as Won</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-4 bg-[#F8FAFC] border-t border-[#E7EAF0] flex items-center justify-between flex-shrink-0">
+                {canDelete ? (
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="px-3.5 py-2 text-[13px] font-medium text-[#697386] hover:text-[#171B26] hover:bg-[#F1F3F7] rounded-md transition-colors"
+                    onClick={() => {
+                      const id = viewingDeal.id;
+                      setViewingDeal(null);
+                      handleDelete(id);
+                    }}
+                    className="text-xs text-[#B91C1C] hover:underline font-medium flex items-center space-x-1"
                   >
-                    Cancel
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Deal</span>
                   </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 text-[13px] font-medium text-white bg-[#3659C9] hover:bg-[#2B47A1] rounded-md shadow-xs transition-colors"
-                  >
-                    Create Deal
-                  </button>
-                </div>
-              </form>
+                ) : (
+                  <span />
+                )}
+                <button
+                  type="button"
+                  onClick={() => setViewingDeal(null)}
+                  className="px-3.5 py-1.5 text-xs font-medium text-[#171B26] bg-white border border-[#E7EAF0] hover:bg-[#F1F3F7] rounded-md transition-colors"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         )}

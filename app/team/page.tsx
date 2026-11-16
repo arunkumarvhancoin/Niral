@@ -512,8 +512,8 @@ export default function TeamPage() {
         {/* Modal: Add Member */}
         {isInviteOpen && (
           <div className="fixed inset-0 bg-[#171B26]/40 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#E7EAF0] max-w-md w-full overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
-              <div className="px-5 py-4 border-b border-[#E7EAF0] flex items-center justify-between">
+            <div className="bg-white rounded-xl shadow-[0_12px_36px_rgba(0,0,0,0.15)] border border-[#E7EAF0] max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
+              <div className="px-6 py-4 border-b border-[#E7EAF0] flex items-center justify-between flex-shrink-0 bg-[#F8FAFC]">
                 <div>
                   <h3 className="font-semibold text-[#171B26] text-sm">Add Team Member</h3>
                   <p className="text-[12px] text-[#697386] mt-0.5">Attach a colleague to {currentOrg?.name}</p>
@@ -523,56 +523,58 @@ export default function TeamPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleAddMember} className="p-5 space-y-4">
-                {isSuper && memberships.length > 0 && (
+              <form onSubmit={handleAddMember} className="flex-1 flex flex-col overflow-hidden">
+                <div className="p-6 space-y-4 overflow-y-auto flex-1 no-scrollbar">
+                  {isSuper && memberships.length > 0 && (
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">
+                        Target Organization * <span className="text-[11px] text-[#5B21B6] font-normal">(Super Admin)</span>
+                      </label>
+                      <select
+                        value={inviteOrgId || currentOrg?.id}
+                        onChange={(e) => setInviteOrgId(e.target.value)}
+                        className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
+                      >
+                        {memberships.map((m) => (
+                          <option key={m.organization.id} value={m.organization.id}>
+                            {m.organization.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   <div>
-                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">
-                      Target Organization * <span className="text-[11px] text-[#5B21B6] font-normal">(Super Admin)</span>
-                    </label>
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Email Address *</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="colleague@domain.com"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
+                    />
+                    <p className="text-[11px] text-[#697386] mt-1.5">
+                      If they already have an account, they are added immediately. If not, this organization will be ready when they log in or sign up.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Assigned Role</label>
                     <select
-                      value={inviteOrgId || currentOrg?.id}
-                      onChange={(e) => setInviteOrgId(e.target.value)}
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value as MemberRole)}
                       className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                     >
-                      {memberships.map((m) => (
-                        <option key={m.organization.id} value={m.organization.id}>
-                          {m.organization.name}
-                        </option>
-                      ))}
+                      <option value="Admin">Admin (Full CRM + Member management)</option>
+                      <option value="Manager">Manager (Manage CRM records & assign tasks)</option>
+                      <option value="Employee">Employee (Create & update permitted records)</option>
+                      <option value="Viewer">Viewer (Read-only access)</option>
                     </select>
                   </div>
-                )}
-
-                <div>
-                  <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Email Address *</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="colleague@domain.com"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
-                  />
-                  <p className="text-[11px] text-[#697386] mt-1.5">
-                    If they already have an account, they are added immediately. If not, this organization will be ready when they log in or sign up.
-                  </p>
                 </div>
 
-                <div>
-                  <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Assigned Role</label>
-                  <select
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value as MemberRole)}
-                    className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
-                  >
-                    <option value="Admin">Admin (Full CRM + Member management)</option>
-                    <option value="Manager">Manager (Manage CRM records & assign tasks)</option>
-                    <option value="Employee">Employee (Create & update permitted records)</option>
-                    <option value="Viewer">Viewer (Read-only access)</option>
-                  </select>
-                </div>
-
-                <div className="pt-3 border-t border-[#E7EAF0] flex items-center justify-end space-x-2">
+                <div className="px-6 py-4 border-t border-[#E7EAF0] bg-slate-50 flex items-center justify-end space-x-2 flex-shrink-0">
                   <button
                     type="button"
                     onClick={() => setIsInviteOpen(false)}

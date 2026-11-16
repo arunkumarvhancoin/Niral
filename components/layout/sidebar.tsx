@@ -49,10 +49,23 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
     <>
       {/* Niral Brand Header */}
       <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#E7EAF0]">
-        <div className="flex items-center space-x-2.5">
-          <img src="/niral-icon.png" alt="Niral" className="w-7 h-7 object-contain flex-shrink-0" />
-          <img src="/niral-wordmark.png" alt="NIRAL" className="h-3.5 w-auto object-contain" />
-        </div>
+        <Link
+          href="/"
+          onClick={() => onMobileClose?.()}
+          className="flex items-center space-x-2.5 hover:opacity-85 transition-opacity cursor-pointer group"
+          title="Niral"
+        >
+          <img
+            src="/niral-icon.png"
+            alt="Niral"
+            className="w-7 h-7 object-contain flex-shrink-0 group-hover:scale-105 transition-transform"
+          />
+          <img
+            src="/niral-wordmark.png"
+            alt="NIRAL"
+            className="h-3.5 w-auto object-contain"
+          />
+        </Link>
         {onMobileClose && (
           <button
             onClick={onMobileClose}

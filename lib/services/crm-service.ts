@@ -1402,7 +1402,16 @@ export const CRMService = {
       console.error('Error fetching deals:', error);
       return [];
     }
-    const list = (data || []) as Deal[];
+    const list = ((data || []) as Deal[]).map((deal: any) => {
+      if (deal.title?.startsWith('[INACTIVE] ')) {
+        return {
+          ...deal,
+          status: 'inactive' as Deal['status'],
+          title: deal.title.replace(/^\[INACTIVE\]\s*/, ''),
+        };
+      }
+      return deal;
+    });
     setCached(cacheKey, list, 25000);
     return list;
   },
@@ -1434,6 +1443,8 @@ export const CRMService = {
   updateDeal: async (dealId: string, orgId: string, updates: Partial<Deal>): Promise<Deal> => {
     invalidateCRMCache(orgId);
     const supabase = createBrowserClient();
+
+    // First attempt the direct update
     const { data, error } = await supabase
       .from('deals')
       .update({
@@ -1446,11 +1457,70 @@ export const CRMService = {
       .single();
 
     if (error) {
-      if (error.message?.includes('deals_status_check') || error.message?.includes('check constraint')) {
-        throw new Error("To enable 'inactive' status in Supabase, execute: ALTER TABLE public.deals DROP CONSTRAINT IF EXISTS deals_status_check; ALTER TABLE public.deals ADD CONSTRAINT deals_status_check CHECK (status IN ('open', 'won', 'lost', 'inactive'));");
+      // If the database constraint rejects 'inactive' status, gracefully fallback to title tag
+      if (
+        (error.message?.includes('deals_status_check') || error.message?.includes('check constraint')) &&
+        updates.status === 'inactive'
+      ) {
+        const { data: existingDeal } = await supabase
+          .from('deals')
+          .select('title')
+          .eq('id', dealId)
+          .single();
+
+        const currentTitle = updates.title || existingDeal?.title || 'Deal';
+        const inactiveTitle = currentTitle.startsWith('[INACTIVE] ')
+          ? currentTitle
+          : `[INACTIVE] ${currentTitle}`;
+
+        const fallbackUpdates = {
+          ...updates,
+          status: 'open',
+          title: inactiveTitle,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('deals')
+          .update(fallbackUpdates)
+          .eq('id', dealId)
+          .eq('organization_id', orgId)
+          .select()
+          .single();
+
+        if (fallbackError) throw new Error(fallbackError.message);
+        return {
+          ...(fallbackData as Deal),
+          status: 'inactive' as Deal['status'],
+          title: (fallbackData as any).title.replace(/^\[INACTIVE\]\s*/, ''),
+        };
       }
+
       throw new Error(error.message);
     }
+
+    // If deal was previously tagged with [INACTIVE] and is now reactivated to 'open', 'won', or 'lost', strip [INACTIVE]
+    if (updates.status && updates.status !== 'inactive' && data?.title?.startsWith('[INACTIVE] ')) {
+      const cleanedTitle = data.title.replace(/^\[INACTIVE\]\s*/, '');
+      await supabase
+        .from('deals')
+        .update({ title: cleanedTitle })
+        .eq('id', dealId);
+      return {
+        ...(data as Deal),
+        title: cleanedTitle,
+      };
+    }
+
+    // Normalize returned deal if tagged
+    if (data?.title?.startsWith('[INACTIVE] ')) {
+      return {
+        ...(data as Deal),
+        status: 'inactive' as Deal['status'],
+        title: data.title.replace(/^\[INACTIVE\]\s*/, ''),
+      };
+    }
+
     return data as Deal;
   },
 

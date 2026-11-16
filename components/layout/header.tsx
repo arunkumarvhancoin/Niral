@@ -16,6 +16,7 @@ import {
   Building2,
   ChevronDown,
   Filter,
+  Sparkles,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -229,6 +230,14 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
               >
                 <ExternalLink className="w-3.5 h-3.5 text-[#697386]" />
                 <span>Workspaces & Discovery</span>
+              </Link>
+              <Link
+                href="/"
+                onClick={() => setShowUserMenu(false)}
+                className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs font-medium text-[#3659C9] hover:bg-blue-50 transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-[#3659C9]" />
+                <span>Niral Suite & Other Services</span>
               </Link>
               <div className="border-t border-[#E7EAF0] my-1" />
               <button

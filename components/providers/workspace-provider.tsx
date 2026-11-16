@@ -164,9 +164,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           !currentPath.startsWith('/auth') &&
           currentPath !== '/login' &&
           currentPath !== '/register' &&
-          !currentPath.startsWith('/invite')
+          !currentPath.startsWith('/invite') &&
+          currentPath !== '/' &&
+          !currentPath.startsWith('/onboarding')
         ) {
-          router.push('/auth/login');
+          router.push('/onboarding');
         }
         setIsLoading(false);
         return;
@@ -222,6 +224,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       } else if (userMemberships.length === 0) {
         const currentPath = pathnameRef.current;
         if (
+          currentPath !== '/' &&
           !currentPath.startsWith('/onboarding') &&
           !currentPath.startsWith('/auth') &&
           !currentPath.startsWith('/invite')

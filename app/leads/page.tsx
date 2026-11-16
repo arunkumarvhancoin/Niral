@@ -32,6 +32,10 @@ import {
   Check,
   Layers,
   ChevronDown,
+  CheckSquare,
+  Phone,
+  Eye,
+  ExternalLink,
 } from 'lucide-react';
 
 export default function LeadsPage() {
@@ -86,6 +90,16 @@ export default function LeadsPage() {
     priority: 'Medium' as Lead['priority'],
     value: 10000,
   });
+
+  // Lead Details Pop-up state
+  const [viewingLead, setViewingLead] = useState<Lead | null>(null);
+
+  // Task for Lead state
+  const [taskLead, setTaskLead] = useState<Lead | null>(null);
+  const [leadTaskTitle, setLeadTaskTitle] = useState('');
+  const [leadTaskDueDate, setLeadTaskDueDate] = useState('');
+  const [leadTaskPriority, setLeadTaskPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
+  const [isSavingLeadTask, setIsSavingLeadTask] = useState(false);
 
   const canCreate = isSuper || hasPermission(currentRole, currentStatus, 'crm:leads:create', currentUser);
   const canUpdate = isSuper || hasPermission(currentRole, currentStatus, 'crm:leads:update', currentUser);
@@ -152,6 +166,44 @@ export default function LeadsPage() {
       value: lead.value,
     });
     setIsModalOpen(true);
+  };
+
+  const handleOpenTaskForLead = (lead: Lead) => {
+    setTaskLead(lead);
+    const contactName = [lead.first_name, lead.last_name].filter(Boolean).join(' ');
+    setLeadTaskTitle(`Follow up with ${contactName || lead.title}`);
+    setLeadTaskDueDate(new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0]);
+    setLeadTaskPriority(lead.priority === 'Urgent' ? 'urgent' : lead.priority === 'High' ? 'high' : 'medium');
+  };
+
+  const handleCreateLeadTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskLead || !currentUser) return;
+    const targetOrgId = taskLead.organization_id || currentOrg?.id;
+    if (!targetOrgId) return;
+
+    setIsSavingLeadTask(true);
+    try {
+      await CRMService.createTask(
+        targetOrgId,
+        {
+          title: leadTaskTitle.trim(),
+          due_date: leadTaskDueDate ? new Date(leadTaskDueDate).toISOString() : null,
+          priority: leadTaskPriority,
+          status: 'todo',
+          assigned_to: currentUser.id,
+          related_type: 'lead',
+          related_id: taskLead.id,
+        },
+        currentUser.id
+      );
+      toast.success('Task created and connected to lead!');
+      setTaskLead(null);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create task');
+    } finally {
+      setIsSavingLeadTask(false);
+    }
   };
 
   const [confirmState, setConfirmState] = useState<{
@@ -422,31 +474,30 @@ export default function LeadsPage() {
         {/* Leads Table */}
         <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider text-[11px]">
                 <tr>
-                  {showOrgColumn && <th className="py-3 px-4">Organization</th>}
-                  <th className="py-3 px-4">Lead</th>
-                  <th className="py-3 px-4">Contact & Company</th>
-                  <th className="py-3 px-4">Estimated Value</th>
-                  <th className="py-3 px-4">Source</th>
-                  <th className="py-3 px-4">Status & Priority</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  {showOrgColumn && <th className="py-3.5 px-4">Organization</th>}
+                  <th className="py-3.5 px-4">Lead & Company</th>
+                  <th className="py-3.5 px-4">Contact Person</th>
+                  <th className="py-3.5 px-4">Estimated Value</th>
+                  <th className="py-3.5 px-4">Status & Priority</th>
+                  <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={showOrgColumn ? 7 : 6} className="py-12 text-center text-slate-400">
+                    <td colSpan={showOrgColumn ? 6 : 5} className="py-12 text-center text-slate-400">
                       Loading leads...
                     </td>
                   </tr>
                 ) : displayLeads.length === 0 ? (
                   <tr>
-                    <td colSpan={showOrgColumn ? 7 : 6} className="py-12 text-center">
-                      <Target className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                      <p className="text-sm font-semibold text-slate-800">No leads found</p>
-                      <p className="text-xs text-slate-400 mt-1">
+                    <td colSpan={showOrgColumn ? 6 : 5} className="py-12 text-center">
+                      <Target className="w-9 h-9 text-slate-300 mx-auto mb-2" />
+                      <p className="text-base font-semibold text-slate-800">No leads found</p>
+                      <p className="text-sm text-slate-500 mt-1">
                         {orgFilter !== 'all'
                           ? 'No leads recorded for this organization.'
                           : 'Capture new leads to drive pipeline growth.'}
@@ -460,105 +511,126 @@ export default function LeadsPage() {
                       memberships.find((m) => m.organization.id === lead.organization_id)?.organization.name ||
                       'Organization';
                     const orgLogo = lead.organization?.logo_url;
+                    const contactFullName =
+                      lead.first_name || lead.last_name
+                        ? `${lead.first_name || ''} ${lead.last_name || ''}`.trim()
+                        : 'Direct Inbound';
 
                     return (
-                      <tr key={lead.id} className="hover:bg-[#F8F9FB] transition-colors">
+                      <tr
+                        key={lead.id}
+                        onClick={() => setViewingLead(lead)}
+                        className="hover:bg-[#F8FAFC] transition-colors cursor-pointer group"
+                      >
                         {/* Organization Name Column for Super Admin / Multi-Org View */}
                         {showOrgColumn && (
-                          <td className="py-3 px-4 whitespace-nowrap">
-                            <div className="flex items-center space-x-2">
-                              <div className="w-5 h-5 rounded bg-[#F1F3F7] border border-[#E7EAF0] flex items-center justify-center text-[#3659C9] text-[10px] font-bold overflow-hidden flex-shrink-0">
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <div className="flex items-center space-x-2.5">
+                              <div className="w-6 h-6 rounded-md bg-[#F1F3F7] border border-[#E7EAF0] flex items-center justify-center text-[#3659C9] text-xs font-bold overflow-hidden flex-shrink-0">
                                 {orgLogo ? (
                                   <img src={orgLogo} alt="" className="w-full h-full object-cover" />
                                 ) : (
                                   orgName.charAt(0).toUpperCase()
                                 )}
                               </div>
-                              <span className="font-medium text-[#171B26] text-xs truncate max-w-[150px]">
+                              <span className="font-medium text-[#171B26] text-sm truncate max-w-[160px]">
                                 {orgName}
                               </span>
                             </div>
                           </td>
                         )}
 
-                        <td className="py-3 px-4">
-                          <div className="font-medium text-[#171B26] text-[13px]">{lead.title}</div>
-                          <div className="text-[11px] text-[#697386]">
-                            Captured {new Date(lead.created_at).toLocaleDateString()}
+                        <td className="py-3.5 px-4">
+                          <div className="font-semibold text-[#171B26] text-sm group-hover:text-[#3659C9] transition-colors flex items-center space-x-1.5">
+                            <span>{lead.title}</span>
+                            <Eye className="w-3.5 h-3.5 opacity-0 group-hover:opacity-60 transition-opacity text-[#3659C9]" />
+                          </div>
+                          <div className="text-xs text-[#697386] mt-0.5">
+                            {lead.company || 'Private Entity'} • Captured {new Date(lead.created_at).toLocaleDateString()}
                           </div>
                         </td>
-                        <td className="py-3 px-4">
-                          <div className="text-[#171B26] font-medium text-[13px]">
-                            {lead.first_name || lead.last_name
-                              ? `${lead.first_name || ''} ${lead.last_name || ''}`
-                              : 'Direct Inbound'}
+
+                        <td className="py-3.5 px-4">
+                          <div className="text-[#171B26] font-medium text-sm">
+                            {contactFullName}
                           </div>
-                          <div className="text-[11px] text-[#697386]">{lead.company || 'Private Entity'}</div>
+                          <div className="text-xs text-[#697386] truncate max-w-[200px]">
+                            {lead.email || lead.phone || 'No direct contact'}
+                          </div>
                         </td>
-                        <td className="py-3 px-4 font-medium text-[#171B26] text-[13px] tabular-nums">
+
+                        <td className="py-3.5 px-4 font-semibold text-[#171B26] text-sm tabular-nums">
                           ₹{Number(lead.value).toLocaleString('en-IN')}
                         </td>
-                        <td className="py-3 px-4">
-                          <span className="text-[11px] bg-[#F7F8FA] text-[#171B26] border border-[#E7EAF0] px-2 py-0.5 rounded font-medium">
-                            {lead.source}
-                          </span>
+
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-xs font-medium uppercase tracking-wide ${
+                                lead.status === 'Converted'
+                                  ? 'bg-[#ECFDF5] text-[#047857] border border-[#A7F3D0]'
+                                  : lead.status === 'Qualified'
+                                  ? 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
+                                  : lead.status === 'Contacted'
+                                  ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
+                                  : lead.status === 'Lost'
+                                  ? 'bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]'
+                                  : 'bg-[#F5F3FF] text-[#5B21B6] border border-[#DDD6FE]'
+                              }`}
+                            >
+                              {lead.status}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                lead.priority === 'Urgent'
+                                  ? 'bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]'
+                                  : lead.priority === 'High'
+                                  ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
+                                  : 'bg-[#F7F8FA] text-[#697386] border border-[#E7EAF0]'
+                              }`}
+                            >
+                              {lead.priority}
+                            </span>
+                          </div>
                         </td>
-                        <td className="py-3 px-4 space-x-1.5">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider ${
-                              lead.status === 'Converted'
-                                ? 'bg-[#ECFDF5] text-[#047857] border border-[#A7F3D0]'
-                                : lead.status === 'Qualified'
-                                ? 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
-                                : lead.status === 'Contacted'
-                                ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
-                                : lead.status === 'Lost'
-                                ? 'bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]'
-                                : 'bg-[#F5F3FF] text-[#5B21B6] border border-[#DDD6FE]'
-                            }`}
-                          >
-                            {lead.status}
-                          </span>
-                          <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                              lead.priority === 'Urgent'
-                                ? 'bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]'
-                                : lead.priority === 'High'
-                                ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
-                                : 'bg-[#F7F8FA] text-[#697386] border border-[#E7EAF0]'
-                            }`}
-                          >
-                            {lead.priority}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-right">
+
+                        <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end space-x-1">
                             {lead.status !== 'Converted' && canUpdate && (
                               <button
                                 onClick={() => handleConvert(lead)}
-                                className="px-2 py-1 text-[11px] font-medium bg-[#ECFDF5] text-[#047857] hover:bg-[#D1FAE5] border border-[#A7F3D0] rounded flex items-center space-x-1 transition-colors"
+                                className="px-2.5 py-1 text-xs font-medium bg-[#ECFDF5] text-[#047857] hover:bg-[#D1FAE5] border border-[#A7F3D0] rounded-md flex items-center space-x-1 transition-colors"
                                 title="Convert to Contact & Deal"
                               >
-                                <ArrowRightLeft className="w-3 h-3" />
+                                <ArrowRightLeft className="w-3.5 h-3.5" />
                                 <span>Convert</span>
                               </button>
                             )}
                             {canUpdate && (
                               <button
-                                onClick={() => handleOpenEdit(lead)}
-                                className="p-1.5 text-[#697386] hover:text-[#171B26] rounded hover:bg-[#F1F3F7] transition-colors"
-                                title="Edit"
+                                onClick={() => handleOpenTaskForLead(lead)}
+                                className="p-1.5 text-[#697386] hover:text-[#3659C9] rounded-md hover:bg-[#F0F4FE] transition-colors"
+                                title="Add task for this lead"
                               >
-                                <Edit className="w-3.5 h-3.5" />
+                                <CheckSquare className="w-4 h-4" />
+                              </button>
+                            )}
+                            {canUpdate && (
+                              <button
+                                onClick={() => handleOpenEdit(lead)}
+                                className="p-1.5 text-[#697386] hover:text-[#171B26] rounded-md hover:bg-[#F1F3F7] transition-colors"
+                                title="Edit Lead"
+                              >
+                                <Edit className="w-4 h-4" />
                               </button>
                             )}
                             {canDelete && (
                               <button
                                 onClick={() => handleDelete(lead)}
-                                className="p-1.5 text-[#697386] hover:text-[#B91C1C] rounded hover:bg-[#FEF2F2] transition-colors"
-                                title="Delete"
+                                className="p-1.5 text-[#697386] hover:text-[#B91C1C] rounded-md hover:bg-[#FEF2F2] transition-colors"
+                                title="Delete Lead"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="w-4 h-4" />
                               </button>
                             )}
                           </div>
@@ -575,8 +647,8 @@ export default function LeadsPage() {
         {/* Modal */}
         {isModalOpen && (
           <div className="fixed inset-0 bg-[#171B26]/40 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#E7EAF0] max-w-lg w-full overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
-              <div className="px-5 py-4 border-b border-[#E7EAF0] flex items-center justify-between">
+            <div className="bg-white rounded-xl shadow-[0_12px_36px_rgba(0,0,0,0.15)] border border-[#E7EAF0] max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
+              <div className="px-6 py-4 border-b border-[#E7EAF0] flex items-center justify-between flex-shrink-0 bg-[#F8FAFC]">
                 <h3 className="font-semibold text-[#171B26] text-sm">
                   {editingLead ? 'Edit Lead' : 'Create New Lead'}
                 </h3>
@@ -588,7 +660,8 @@ export default function LeadsPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-5 space-y-4">
+              <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
+                <div className="p-6 space-y-4 overflow-y-auto flex-1 no-scrollbar">
                 {/* Organization Selector for Super Admin */}
                 {isSuper && !editingLead && (
                   <div>
@@ -707,26 +780,316 @@ export default function LeadsPage() {
                     </select>
                   </div>
                 </div>
+              </div>
 
-                <div className="pt-3 border-t border-[#E7EAF0] flex items-center justify-end space-x-2">
+              <div className="px-6 py-4 border-t border-[#E7EAF0] bg-slate-50 flex items-center justify-end space-x-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-3.5 py-2 text-[13px] font-medium text-[#697386] hover:text-[#171B26] hover:bg-[#F1F3F7] rounded-md transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-[13px] font-medium text-white bg-[#3659C9] hover:bg-[#2B47A1] rounded-md shadow-xs transition-colors"
+                >
+                  {editingLead ? 'Update Lead' : 'Save Lead'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+        {/* Quick Task for Lead Modal */}
+        {taskLead && (
+          <div className="fixed inset-0 bg-[#171B26]/40 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-[0_12px_36px_rgba(0,0,0,0.15)] border border-[#E7EAF0] max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
+              <div className="px-6 py-4 border-b border-[#E7EAF0] flex items-center justify-between flex-shrink-0 bg-[#F8FAFC]">
+                <div>
+                  <h3 className="font-semibold text-[#171B26] text-sm">Add Task for Lead</h3>
+                  <p className="text-[12px] text-[#3659C9] font-medium mt-0.5 truncate max-w-[280px]">
+                    {taskLead.title} {taskLead.company ? `(${taskLead.company})` : ''}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setTaskLead(null)}
+                  className="text-[#697386] hover:text-[#171B26] p-1 rounded-md hover:bg-[#F1F3F7] transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateLeadTask} className="flex-1 flex flex-col overflow-hidden">
+                <div className="p-6 space-y-4 overflow-y-auto flex-1 no-scrollbar">
+                  <div>
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Task Title *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Call lead back to discuss pricing"
+                      value={leadTaskTitle}
+                      onChange={(e) => setLeadTaskTitle(e.target.value)}
+                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9]"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Due Date</label>
+                      <input
+                        type="date"
+                        value={leadTaskDueDate}
+                        onChange={(e) => setLeadTaskDueDate(e.target.value)}
+                        className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] tabular-nums focus:outline-none focus:border-[#3659C9]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Priority</label>
+                      <select
+                        value={leadTaskPriority}
+                        onChange={(e) => setLeadTaskPriority(e.target.value as any)}
+                        className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9]"
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-6 py-4 border-t border-[#E7EAF0] bg-slate-50 flex items-center justify-end space-x-2 flex-shrink-0">
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
+                    onClick={() => setTaskLead(null)}
                     className="px-3.5 py-2 text-[13px] font-medium text-[#697386] hover:text-[#171B26] hover:bg-[#F1F3F7] rounded-md transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 text-[13px] font-medium text-white bg-[#3659C9] hover:bg-[#2B47A1] rounded-md shadow-xs transition-colors"
+                    disabled={isSavingLeadTask || !leadTaskTitle.trim()}
+                    className="px-4 py-2 text-[13px] font-medium text-white bg-[#3659C9] hover:bg-[#2B47A1] rounded-md shadow-xs transition-colors disabled:opacity-50"
                   >
-                    {editingLead ? 'Update Lead' : 'Save Lead'}
+                    {isSavingLeadTask ? 'Adding...' : 'Connect & Add Task'}
                   </button>
                 </div>
               </form>
             </div>
           </div>
         )}
+
+        {/* Lead Details Pop-up Modal */}
+        {viewingLead && (
+          <div className="fixed inset-0 bg-[#171B26]/40 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-[0_12px_36px_rgba(0,0,0,0.15)] border border-[#E7EAF0] max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-[#E7EAF0] flex items-start justify-between bg-[#F8FAFC] flex-shrink-0">
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-[#3659C9] border border-blue-200">
+                      Lead Overview
+                    </span>
+                    {viewingLead.organization?.name && (
+                      <span className="text-xs text-[#697386] font-medium">
+                        • {viewingLead.organization.name}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-lg font-bold text-[#171B26] leading-snug">
+                    {viewingLead.title}
+                  </h3>
+                  <p className="text-xs text-[#697386]">
+                    Captured on {new Date(viewingLead.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setViewingLead(null)}
+                  className="text-[#697386] hover:text-[#171B26] p-1.5 rounded-md hover:bg-slate-200/60 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-5 overflow-y-auto flex-1 no-scrollbar">
+                {/* Value & Status Grid */}
+                <div className="grid grid-cols-2 gap-3 p-4 bg-[#F8FAFC] rounded-lg border border-[#E7EAF0]">
+                  <div>
+                    <span className="text-xs font-medium text-[#697386] uppercase tracking-wider">Estimated Value</span>
+                    <div className="text-xl font-bold text-[#171B26] tabular-nums mt-0.5">
+                      ₹{Number(viewingLead.value).toLocaleString('en-IN')}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-xs font-medium text-[#697386] uppercase tracking-wider">Status & Priority</span>
+                    <div className="flex items-center space-x-1.5 mt-1">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-xs font-medium uppercase tracking-wide ${
+                          viewingLead.status === 'Converted'
+                            ? 'bg-[#ECFDF5] text-[#047857] border border-[#A7F3D0]'
+                            : viewingLead.status === 'Qualified'
+                            ? 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
+                            : viewingLead.status === 'Contacted'
+                            ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
+                            : viewingLead.status === 'Lost'
+                            ? 'bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]'
+                            : 'bg-[#F5F3FF] text-[#5B21B6] border border-[#DDD6FE]'
+                        }`}
+                      >
+                        {viewingLead.status}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          viewingLead.priority === 'Urgent'
+                            ? 'bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]'
+                            : viewingLead.priority === 'High'
+                            ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
+                            : 'bg-[#F7F8FA] text-[#697386] border border-[#E7EAF0]'
+                        }`}
+                      >
+                        {viewingLead.priority}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact & Company Details */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Contact Information
+                  </h4>
+                  <div className="space-y-2.5 text-sm">
+                    <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
+                      <span className="text-[#697386] font-medium">Contact Person:</span>
+                      <span className="font-semibold text-[#171B26]">
+                        {viewingLead.first_name || viewingLead.last_name
+                          ? `${viewingLead.first_name || ''} ${viewingLead.last_name || ''}`.trim()
+                          : 'Direct Inbound / Unassigned'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
+                      <span className="text-[#697386] font-medium">Company / Organization:</span>
+                      <span className="font-semibold text-[#171B26]">
+                        {viewingLead.company || 'Private Entity'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
+                      <span className="text-[#697386] font-medium">Email Address:</span>
+                      {viewingLead.email ? (
+                        <a
+                          href={`mailto:${viewingLead.email}`}
+                          className="font-medium text-[#3659C9] hover:underline flex items-center space-x-1"
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                          <span>{viewingLead.email}</span>
+                        </a>
+                      ) : (
+                        <span className="text-slate-400">Not provided</span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between py-1.5 border-b border-slate-100">
+                      <span className="text-[#697386] font-medium">Phone Number:</span>
+                      {viewingLead.phone ? (
+                        <a
+                          href={`tel:${viewingLead.phone}`}
+                          className="font-medium text-[#3659C9] hover:underline flex items-center space-x-1"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          <span>{viewingLead.phone}</span>
+                        </a>
+                      ) : (
+                        <span className="text-slate-400">Not provided</span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between py-1.5">
+                      <span className="text-[#697386] font-medium">Acquisition Source:</span>
+                      <span className="px-2.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-xs font-medium text-slate-800">
+                        {viewingLead.source}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer with Actions */}
+              <div className="px-6 py-4 border-t border-[#E7EAF0] bg-slate-50 flex items-center justify-between flex-shrink-0">
+                <div className="flex items-center space-x-2">
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = viewingLead;
+                        setViewingLead(null);
+                        handleDelete(target);
+                      }}
+                      className="px-3 py-2 text-xs font-medium text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-md transition-colors flex items-center space-x-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
+                    </button>
+                  )}
+                  {viewingLead.status !== 'Converted' && canUpdate && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = viewingLead;
+                        setViewingLead(null);
+                        handleConvert(target);
+                      }}
+                      className="px-3 py-2 text-xs font-medium bg-[#ECFDF5] text-[#047857] hover:bg-[#D1FAE5] border border-[#A7F3D0] rounded-md transition-colors flex items-center space-x-1"
+                    >
+                      <ArrowRightLeft className="w-3.5 h-3.5" />
+                      <span>Convert</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  {canUpdate && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = viewingLead;
+                        setViewingLead(null);
+                        handleOpenTaskForLead(target);
+                      }}
+                      className="px-3.5 py-2 text-xs font-medium text-[#171B26] bg-white border border-[#E7EAF0] hover:bg-slate-100 rounded-md transition-colors flex items-center space-x-1.5 shadow-2xs"
+                    >
+                      <CheckSquare className="w-4 h-4 text-[#3659C9]" />
+                      <span>Add Task</span>
+                    </button>
+                  )}
+                  {canUpdate && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = viewingLead;
+                        setViewingLead(null);
+                        handleOpenEdit(target);
+                      }}
+                      className="px-4 py-2 text-xs font-medium text-white bg-[#3659C9] hover:bg-[#2B47A1] rounded-md transition-colors flex items-center space-x-1.5 shadow-2xs"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                      <span>Edit Lead</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setViewingLead(null)}
+                    className="px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 rounded-md transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* In-UI Confirmation Dialog */}
         <ConfirmDialog
           isOpen={confirmState.isOpen}

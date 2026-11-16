@@ -15,6 +15,7 @@ import {
   Loader2,
   Search,
   X,
+  Sparkles,
 } from 'lucide-react';
 import Link from 'next/navigation';
 import { useRouter, usePathname } from 'next/navigation';
@@ -253,6 +254,19 @@ export function OrganizationSwitcher() {
                 <Layers className="w-3 h-3" />
               </div>
               <span>View All Organizations</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                router.push('/');
+              }}
+              className="w-full flex items-center space-x-2 p-1.5 rounded-md text-[#3659C9] hover:bg-blue-50 text-[13px] transition-colors text-left font-medium"
+            >
+              <div className="w-5 h-5 rounded border border-blue-200 bg-blue-50 flex items-center justify-center text-[#3659C9]">
+                <Sparkles className="w-3 h-3" />
+              </div>
+              <span>Niral Suite & Other Services</span>
             </button>
           </div>
         </div>
