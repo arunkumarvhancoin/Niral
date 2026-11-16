@@ -319,17 +319,7 @@ function OnboardingContent() {
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-semibold text-[#171B26]">Password *</label>
-                    {authMode === 'signin' && (
-                      <Link
-                        href="/auth/forgot-password"
-                        className="text-[11px] text-[#3659C9] hover:underline"
-                      >
-                        Forgot password?
-                      </Link>
-                    )}
-                  </div>
+                  <label className="block text-xs font-semibold text-[#171B26] mb-1.5">Password *</label>
                   <div className="relative flex items-center">
                     <Lock className="w-4 h-4 text-[#9AA2B1] absolute left-3 pointer-events-none" />
                     <input
