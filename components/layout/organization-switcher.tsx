@@ -230,18 +230,20 @@ export function OrganizationSwitcher() {
           )}
 
           <div className="mt-1.5 pt-1.5 border-t border-[#E7EAF0] px-1.5 space-y-0.5">
-            <button
-              onClick={() => {
-                setIsOpen(false);
-                router.push('/onboarding?step=create');
-              }}
-              className="w-full flex items-center space-x-2 p-1.5 rounded-md text-[#171B26] hover:bg-[#F1F3F7] text-[13px] transition-colors text-left"
-            >
-              <div className="w-5 h-5 rounded border border-[#E7EAF0] flex items-center justify-center text-[#697386]">
-                <Plus className="w-3 h-3" />
-              </div>
-              <span>Create New Organization</span>
-            </button>
+            {isSuper && (
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  router.push('/onboarding?step=create');
+                }}
+                className="w-full flex items-center space-x-2 p-1.5 rounded-md text-[#171B26] hover:bg-[#F1F3F7] text-[13px] transition-colors text-left"
+              >
+                <div className="w-5 h-5 rounded border border-[#E7EAF0] flex items-center justify-center text-[#697386]">
+                  <Plus className="w-3 h-3" />
+                </div>
+                <span>Create New Organization</span>
+              </button>
+            )}
 
             <button
               onClick={() => {

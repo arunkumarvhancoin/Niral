@@ -58,6 +58,20 @@ export interface OrganizationInvitation {
   inviter?: UserProfile;
 }
 
+export interface OrganizationCreationInvite {
+  id: string;
+  email: string;
+  token: string;
+  invited_by: string | null;
+  status: 'pending' | 'used' | 'revoked' | 'expired';
+  note?: string | null;
+  used_by?: string | null;
+  used_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  inviter?: UserProfile;
+}
+
 export interface OrganizationJoinRequest {
   id: string;
   organization_id: string;

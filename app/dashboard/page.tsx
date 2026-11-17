@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { AppShell } from '../../components/layout/app-shell';
 import { useWorkspace } from '../../components/providers/workspace-provider';
-import { CRMService, DashboardMetrics } from '../../lib/services/crm-service';
+import { CRMService, DashboardMetrics, parseNumericValue } from '../../lib/services/crm-service';
 import { isBharatPlay } from '../../lib/permissions';
 import {
   Users2,
@@ -65,12 +65,13 @@ export default function DashboardPage() {
     };
   }, [orgIdsKey]);
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | string | null | undefined) => {
+    const num = parseNumericValue(amount);
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(num);
   };
 
   const showOrgBadge = isSuper || effectiveOrgIds.length > 1;

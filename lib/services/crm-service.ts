@@ -5,6 +5,7 @@ import {
   Organization,
   OrganizationMember,
   OrganizationInvitation,
+  OrganizationCreationInvite,
   OrganizationJoinRequest,
   Contact,
   Lead,
@@ -93,6 +94,18 @@ export function invalidateCRMCache(prefix?: string) {
   }
 }
 
+/**
+ * Safely parses any value (numbers, strings with commas/currency symbols, null, undefined)
+ * into a valid numeric float. Always returns 0 instead of NaN.
+ */
+export function parseNumericValue(val: any): number {
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  if (!val) return 0;
+  const cleaned = String(val).replace(/[^0-9.-]/g, '');
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
 // 100% Real Supabase Data Service
 export const CRMService = {
   // 1. Current authenticated user profile
@@ -136,6 +149,9 @@ export const CRMService = {
 
   signOut: async (): Promise<void> => {
     invalidateCRMCache();
+    try {
+      await fetch('/api/auth/signout', { method: 'POST' });
+    } catch {}
     const supabase = createBrowserClient();
     await supabase.auth.signOut();
     if (typeof document !== 'undefined') {
@@ -203,8 +219,15 @@ export const CRMService = {
         .eq('id', userId)
         .maybeSingle();
 
-      if (userProfile?.email) {
-        const targetEmail = userProfile.email.toLowerCase().trim();
+      let targetEmail = userProfile?.email ? userProfile.email.toLowerCase().trim() : null;
+      if (!targetEmail) {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user?.email) {
+          targetEmail = authData.user.email.toLowerCase().trim();
+        }
+      }
+
+      if (targetEmail) {
         cleanEmail = targetEmail;
         const { data: pendingInvs } = await supabase
           .from('organization_invitations')
@@ -323,6 +346,45 @@ export const CRMService = {
     }
   ): Promise<{ organization: Organization; member: OrganizationMember }> => {
     const supabase = createBrowserClient();
+
+    // Cryptographically verify server-authenticated session before creation
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      throw new Error('Access denied: You must be an authenticated user to create an organization workspace.');
+    }
+
+    const authenticatedUserId = user.id;
+    const userEmail = (user.email || '').toLowerCase().trim();
+    const isSuper = isSuperAdmin(userEmail);
+
+    let pendingInviteId: string | null = null;
+    if (!isSuper) {
+      // Enforce: regular users can only create 1 organization of their own
+      const { count: existingCount } = await supabase
+        .from('organizations')
+        .select('id', { count: 'exact', head: true })
+        .eq('created_by', authenticatedUserId);
+
+      if (typeof existingCount === 'number' && existingCount >= 1) {
+        throw new Error('Organization creation limit reached: You can only create 1 organization of your own. You may still join other existing organizations if invited.');
+      }
+
+      // Regular users MUST have a pending organization creation invite from a Super Admin
+      const { data: invite, error: inviteErr } = await supabase
+        .from('organization_creation_invites')
+        .select('id')
+        .eq('status', 'pending')
+        .ilike('email', userEmail)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (inviteErr || !invite) {
+        throw new Error('Access denied: Only platform Super Admins or users specifically invited by a Super Admin can create a new organization.');
+      }
+      pendingInviteId = invite.id;
+    }
+
     let cleanSlug = params.slug.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
     if (!cleanSlug) {
       cleanSlug = `org-${Math.random().toString(36).substring(2, 8)}`;
@@ -349,7 +411,7 @@ export const CRMService = {
         website: params.website || null,
         description: params.description || null,
         logo_url: params.logo_url || null,
-        created_by: userId,
+        created_by: authenticatedUserId,
       })
       .select()
       .single();
@@ -361,7 +423,7 @@ export const CRMService = {
     const { data: member, error: memberError } = await supabase
       .from('organization_members')
       .insert({
-        user_id: userId,
+        user_id: authenticatedUserId,
         organization_id: org.id,
         role: 'Owner',
         status: 'approved',
@@ -394,10 +456,23 @@ export const CRMService = {
       ]);
     }
 
+    // If created via an invite, mark the invite as used
+    if (pendingInviteId) {
+      await supabase
+        .from('organization_creation_invites')
+        .update({
+          status: 'used',
+          used_by: authenticatedUserId,
+          used_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', pendingInviteId);
+    }
+
     // Create welcome notification
     await supabase.from('notifications').insert({
       organization_id: org.id,
-      user_id: userId,
+      user_id: authenticatedUserId,
       title: `Welcome to ${org.name}`,
       message: 'Workspace created successfully with full Owner administrative privileges.',
       type: 'system',
@@ -406,6 +481,113 @@ export const CRMService = {
     });
 
     return { organization: org as Organization, member: member as OrganizationMember };
+  },
+
+  canUserCreateOrganization: async (
+    email?: string | null,
+    userId?: string | null
+  ): Promise<{ allowed: boolean; isSuperAdmin: boolean; inviteId?: string; reason?: 'limit_reached' | 'no_invite' }> => {
+    if (!email) return { allowed: false, isSuperAdmin: false, reason: 'no_invite' };
+    const cleanEmail = email.toLowerCase().trim();
+    if (isSuperAdmin(cleanEmail)) {
+      return { allowed: true, isSuperAdmin: true };
+    }
+
+    const supabase = createBrowserClient();
+    try {
+      // Rule: Regular users can only create 1 organization of their own.
+      // If they already created 1 organization, they cannot create another one.
+      if (userId) {
+        const { count, error: countErr } = await supabase
+          .from('organizations')
+          .select('id', { count: 'exact', head: true })
+          .eq('created_by', userId);
+
+        if (!countErr && typeof count === 'number' && count >= 1) {
+          return { allowed: false, isSuperAdmin: false, reason: 'limit_reached' };
+        }
+      }
+
+      const { data: invite } = await supabase
+        .from('organization_creation_invites')
+        .select('id')
+        .eq('status', 'pending')
+        .ilike('email', cleanEmail)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (invite) {
+        return { allowed: true, isSuperAdmin: false, inviteId: invite.id };
+      }
+    } catch (e) {
+      console.warn('Error checking org creation invite:', e);
+    }
+
+    return { allowed: false, isSuperAdmin: false, reason: 'no_invite' };
+  },
+
+  createOrganizationCreationInvite: async (
+    email: string,
+    note?: string
+  ): Promise<OrganizationCreationInvite> => {
+    const supabase = createBrowserClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user || !isSuperAdmin(user.email)) {
+      throw new Error('Unauthorized: Only platform Super Admins can invite a user to create an organization.');
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+    const token = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    const { data, error } = await supabase
+      .from('organization_creation_invites')
+      .insert({
+        email: cleanEmail,
+        token,
+        note: note?.trim() || null,
+        invited_by: user.id,
+        status: 'pending',
+      })
+      .select('*, inviter:profiles!invited_by(id, full_name, email, avatar_url)')
+      .single();
+
+    if (error) {
+      throw new Error(error.message || 'Failed to create organization creation invite');
+    }
+
+    return data as OrganizationCreationInvite;
+  },
+
+  getOrganizationCreationInvites: async (): Promise<OrganizationCreationInvite[]> => {
+    const supabase = createBrowserClient();
+    const { data, error } = await supabase
+      .from('organization_creation_invites')
+      .select('*, inviter:profiles!invited_by(id, full_name, email, avatar_url)')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('Failed to load organization creation invites:', error);
+      return [];
+    }
+    return (data || []) as OrganizationCreationInvite[];
+  },
+
+  revokeOrganizationCreationInvite: async (inviteId: string): Promise<void> => {
+    const supabase = createBrowserClient();
+    const { error } = await supabase
+      .from('organization_creation_invites')
+      .update({
+        status: 'revoked',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', inviteId);
+
+    if (error) {
+      throw new Error(error.message || 'Failed to revoke invite');
+    }
   },
 
   updateOrganization: async (orgId: string, updates: Partial<Organization>): Promise<Organization> => {
@@ -570,7 +752,7 @@ export const CRMService = {
       .in('role', ['Owner', 'Admin']);
 
     if (admins && admins.length > 0) {
-      const notificationsToInsert = admins.map((admin) => ({
+      const notificationsToInsert = admins.map((admin: { user_id: string }) => ({
         organization_id: orgId,
         user_id: admin.user_id,
         title: 'New Membership Request',
@@ -708,7 +890,7 @@ export const CRMService = {
     email: string,
     role: MemberRole,
     inviterId: string
-  ): Promise<{ addedDirectly: boolean; memberName?: string }> => {
+  ): Promise<{ addedDirectly: boolean; memberName?: string; token?: string; email: string }> => {
     const supabase = createBrowserClient();
     const cleanEmail = email.trim().toLowerCase();
 
@@ -742,6 +924,7 @@ export const CRMService = {
       return {
         addedDirectly: true,
         memberName: existingProfile.full_name || existingProfile.email,
+        email: cleanEmail,
       };
     } else {
       // User hasn't registered yet! Store in organization_invitations
@@ -764,7 +947,7 @@ export const CRMService = {
       if (invError) throw new Error(invError.message);
 
       invalidateCRMCache(orgId);
-      return { addedDirectly: false };
+      return { addedDirectly: false, token, email: cleanEmail };
     }
   },
 
@@ -816,17 +999,69 @@ export const CRMService = {
     return data as OrganizationInvitation;
   },
 
-  getOrganizationInvitations: async (orgId: string): Promise<OrganizationInvitation[]> => {
+  getOrganizationInvitations: async (
+    orgId: string | string[],
+    includeOrgCreationInvites = false
+  ): Promise<OrganizationInvitation[]> => {
     const supabase = createBrowserClient();
-    const { data, error } = await supabase
+    const ids = Array.isArray(orgId) ? orgId.filter(Boolean) : [orgId].filter(Boolean);
+
+    let query = supabase
       .from('organization_invitations')
-      .select('*')
-      .eq('organization_id', orgId)
+      .select('*, organization:organizations(id, name, slug)')
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
-    if (error) return [];
-    return (data || []) as OrganizationInvitation[];
+    if (ids.length > 0) {
+      query = query.in('organization_id', ids);
+    }
+
+    const { data, error } = await query;
+    let results = (data || []) as OrganizationInvitation[];
+
+    // If Super Admin or requested, also include pending organization creation invites so any joining link sent is visible!
+    if (includeOrgCreationInvites) {
+      try {
+        const { data: creationInvites } = await supabase
+          .from('organization_creation_invites')
+          .select('*')
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false });
+
+        if (creationInvites && creationInvites.length > 0) {
+          const mapped: OrganizationInvitation[] = creationInvites.map((ci: any) => ({
+            id: ci.id,
+            organization_id: 'org-creation',
+            email: ci.email,
+            role: 'Owner' as MemberRole,
+            token: ci.token,
+            invited_by: ci.invited_by,
+            status: 'pending' as const,
+            expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
+            created_at: ci.created_at,
+            updated_at: ci.updated_at,
+            organization: {
+              id: 'org-creation',
+              name: ci.note ? `Create Org: ${ci.note}` : 'Organization Creation',
+              slug: 'org-creation',
+              logo_url: null,
+              industry: 'Enterprise Software & SaaS',
+              company_size: '1-10 employees',
+              website: null,
+              description: ci.note || null,
+              created_by: ci.invited_by,
+              created_at: ci.created_at,
+              updated_at: ci.updated_at,
+            },
+          }));
+          results = [...results, ...mapped];
+        }
+      } catch (e) {
+        console.warn('Failed to load creation invites in invitations list:', e);
+      }
+    }
+
+    return results;
   },
 
   acceptInvitation: async (token: string, userId: string): Promise<{ organizationId: string }> => {
@@ -916,7 +1151,7 @@ export const CRMService = {
 
     let contactsQ = supabase.from('contacts').select('*', { count: 'exact', head: true });
     let leadsQ = supabase.from('leads').select('id, status');
-    let dealsQ = supabase.from('deals').select('id, value, status');
+    let dealsQ = supabase.from('deals').select('id, title, value, status');
     let tasksQ = supabase
       .from('tasks')
       .select('*, organization:organizations (id, name, slug, logo_url)')
@@ -976,15 +1211,19 @@ export const CRMService = {
     ]);
 
     const leads = leadsData || [];
-    const deals = dealsData || [];
-    const openDeals = deals.filter((d) => d.status === 'open');
-    const wonDeals = deals.filter((d) => d.status === 'won');
+    const deals = (dealsData || []).map((d: any) => ({
+      ...d,
+      status: d.title?.startsWith('[INACTIVE] ') ? 'inactive' : d.status,
+      value: parseNumericValue(d.value),
+    }));
+    const openDeals = deals.filter((d: any) => d.status === 'open');
+    const wonDeals = deals.filter((d: any) => d.status === 'won');
 
-    const pipelineRevenue = openDeals.reduce((sum, d) => sum + Number(d.value || 0), 0);
-    const wonRevenue = wonDeals.reduce((sum, d) => sum + Number(d.value || 0), 0);
+    const pipelineRevenue = openDeals.reduce((sum: number, d: any) => sum + d.value, 0);
+    const wonRevenue = wonDeals.reduce((sum: number, d: any) => sum + d.value, 0);
 
     const totalLeadsCount = leads.length;
-    const convertedLeadsCount = leads.filter((l) => l.status === 'Converted').length;
+    const convertedLeadsCount = leads.filter((l: any) => l.status === 'Converted').length;
     const conversionRate = totalLeadsCount > 0 ? Math.round((convertedLeadsCount / totalLeadsCount) * 100) : 0;
 
     const result: DashboardMetrics = {
@@ -995,10 +1234,14 @@ export const CRMService = {
       pipelineRevenue,
       wonRevenue,
       recentActivities: [],
-      recentRegistrations: (recentRegistrationsData || []) as any,
+      recentRegistrations: (recentRegistrationsData || []).map((r: any) => ({
+        ...r,
+        value: parseNumericValue(r.value),
+      })) as any,
       recentDeals: (recentDealsData || []).map((d: any) => ({
         ...d,
         name: d.title || d.name, // Support both title and name
+        value: parseNumericValue(d.value),
       })) as any,
       upcomingTasks: (tasksData || []) as Task[],
       leadConversionRate: conversionRate,
@@ -1176,7 +1419,10 @@ export const CRMService = {
       console.error('Error fetching leads:', error);
       return [];
     }
-    const list = (data || []) as Lead[];
+    const list = ((data || []) as Lead[]).map((l: any) => ({
+      ...l,
+      value: parseNumericValue(l.value),
+    }));
     if (isDefaultQuery) {
       setCached(cacheKey, list, 25000);
     }
@@ -1199,7 +1445,7 @@ export const CRMService = {
         source: data.source || 'Website',
         status: data.status || 'New',
         priority: data.priority || 'Medium',
-        value: Number(data.value) || 0,
+        value: parseNumericValue(data.value),
         assigned_to: data.assigned_to || creatorId,
         created_by: creatorId,
       })
@@ -1213,12 +1459,14 @@ export const CRMService = {
   updateLead: async (leadId: string, orgId: string, updates: Partial<Lead>): Promise<Lead> => {
     invalidateCRMCache(orgId);
     const supabase = createBrowserClient();
+    const cleanUpdates = {
+      ...updates,
+      ...(updates.value !== undefined ? { value: parseNumericValue(updates.value) } : {}),
+      updated_at: new Date().toISOString(),
+    };
     const { data, error } = await supabase
       .from('leads')
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString(),
-      })
+      .update(cleanUpdates)
       .eq('id', leadId)
       .eq('organization_id', orgId)
       .select()
@@ -1281,7 +1529,8 @@ export const CRMService = {
       .eq('is_default', true)
       .maybeSingle();
 
-    if (pipeline && lead.value > 0) {
+    const leadValue = parseNumericValue(lead.value);
+    if (pipeline && leadValue > 0) {
       const { data: firstStage } = await supabase
         .from('pipeline_stages')
         .select('id')
@@ -1299,7 +1548,7 @@ export const CRMService = {
             stage_id: firstStage.id,
             contact_id: contact.id,
             title: lead.company ? `${lead.company} - Deal` : `${lead.title} - Deal`,
-            value: lead.value,
+            value: leadValue,
             expected_close_date: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
             status: 'open',
             owner_id: lead.assigned_to || userId,
@@ -1344,12 +1593,21 @@ export const CRMService = {
     if (cached) return cached;
 
     const supabase = createBrowserClient();
-    const { data: pipelines, error: pipeError } = await supabase
+    let { data: pipelines } = await supabase
       .from('pipelines')
       .select('*')
-      .eq('organization_id', orgId);
+      .eq('organization_id', orgId)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: true });
 
-    if (pipeError || !pipelines) return [];
+    // Resilient fallback if order clause fails
+    if (!pipelines || pipelines.length === 0) {
+      const { data: rawPipes } = await supabase
+        .from('pipelines')
+        .select('*')
+        .eq('organization_id', orgId);
+      pipelines = rawPipes || [];
+    }
 
     const { data: stages } = await supabase
       .from('pipeline_stages')
@@ -1359,10 +1617,57 @@ export const CRMService = {
 
     const allStages = stages || [];
 
-    const result = pipelines.map((p) => ({
-      ...p,
-      stages: allStages.filter((s) => s.pipeline_id === p.id),
-    }));
+    // Auto-provision standard sales pipeline and stages if this organization has none configured
+    if (pipelines.length === 0) {
+      try {
+        const { data: newPipe } = await supabase
+          .from('pipelines')
+          .insert({
+            organization_id: orgId,
+            name: 'Standard Sales Pipeline',
+            is_default: true,
+          })
+          .select()
+          .single();
+
+        if (newPipe) {
+          const standardStages = [
+            { organization_id: orgId, pipeline_id: newPipe.id, name: 'Lead Qualified', order_index: 0, probability: 20, color: '#3b82f6' },
+            { organization_id: orgId, pipeline_id: newPipe.id, name: 'Proposal Sent', order_index: 1, probability: 50, color: '#8b5cf6' },
+            { organization_id: orgId, pipeline_id: newPipe.id, name: 'Negotiation', order_index: 2, probability: 80, color: '#f59e0b' },
+            { organization_id: orgId, pipeline_id: newPipe.id, name: 'Closed Won', order_index: 3, probability: 100, color: '#10b981' },
+          ];
+          const { data: createdStages } = await supabase
+            .from('pipeline_stages')
+            .insert(standardStages)
+            .select();
+
+          const result = [{
+            ...newPipe,
+            stages: (createdStages && createdStages.length > 0)
+              ? (createdStages as PipelineStage[])
+              : (standardStages.map((s, idx) => ({ ...s, id: `stage-${idx}` })) as unknown as PipelineStage[]),
+          }];
+          setCached(cacheKey, result, 60000);
+          return result;
+        }
+      } catch (provisionErr) {
+        console.warn('Auto-provision pipeline notice:', provisionErr);
+      }
+    }
+
+    const result = pipelines.map((p: any) => {
+      let pipeStages = allStages.filter((s: any) => s.pipeline_id === p.id);
+      // Resilient fallback: if stages in DB have no pipeline_id or only 1 pipeline exists
+      if (pipeStages.length === 0 && allStages.length > 0) {
+        pipeStages = allStages;
+      }
+      return {
+        ...p,
+        stages: pipeStages,
+      };
+    });
+
     setCached(cacheKey, result, 60000);
     return result;
   },
@@ -1403,14 +1708,13 @@ export const CRMService = {
       return [];
     }
     const list = ((data || []) as Deal[]).map((deal: any) => {
-      if (deal.title?.startsWith('[INACTIVE] ')) {
-        return {
-          ...deal,
-          status: 'inactive' as Deal['status'],
-          title: deal.title.replace(/^\[INACTIVE\]\s*/, ''),
-        };
-      }
-      return deal;
+      const isInactiveTag = deal.title?.startsWith('[INACTIVE] ');
+      return {
+        ...deal,
+        value: parseNumericValue(deal.value),
+        status: isInactiveTag ? ('inactive' as Deal['status']) : deal.status,
+        title: isInactiveTag ? deal.title.replace(/^\[INACTIVE\]\s*/, '') : deal.title,
+      };
     });
     setCached(cacheKey, list, 25000);
     return list;
@@ -1427,7 +1731,7 @@ export const CRMService = {
         stage_id: data.stage_id,
         contact_id: data.contact_id || null,
         title: data.title,
-        value: Number(data.value) || 0,
+        value: parseNumericValue(data.value),
         expected_close_date: data.expected_close_date || null,
         status: data.status || 'open',
         owner_id: data.owner_id || creatorId,
@@ -1443,14 +1747,16 @@ export const CRMService = {
   updateDeal: async (dealId: string, orgId: string, updates: Partial<Deal>): Promise<Deal> => {
     invalidateCRMCache(orgId);
     const supabase = createBrowserClient();
+    const cleanUpdates = {
+      ...updates,
+      ...(updates.value !== undefined ? { value: parseNumericValue(updates.value) } : {}),
+      updated_at: new Date().toISOString(),
+    };
 
     // First attempt the direct update
     const { data, error } = await supabase
       .from('deals')
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString(),
-      })
+      .update(cleanUpdates)
       .eq('id', dealId)
       .eq('organization_id', orgId)
       .select()

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { AppShell } from '../../components/layout/app-shell';
 import { useWorkspace } from '../../components/providers/workspace-provider';
-import { CRMService } from '../../lib/services/crm-service';
+import { CRMService, parseNumericValue } from '../../lib/services/crm-service';
 import { Lead } from '../../lib/types/crm';
 import { hasPermission, isBharatPlay, isSuperAdmin } from '../../lib/permissions';
 import { toast } from '../../lib/stores/toast-store';
@@ -560,7 +560,7 @@ export default function LeadsPage() {
                         </td>
 
                         <td className="py-3.5 px-4 font-semibold text-[#171B26] text-sm tabular-nums">
-                          ₹{Number(lead.value).toLocaleString('en-IN')}
+                          ₹{parseNumericValue(lead.value).toLocaleString('en-IN')}
                         </td>
 
                         <td className="py-3.5 px-4">
@@ -921,7 +921,7 @@ export default function LeadsPage() {
                   <div>
                     <span className="text-xs font-medium text-[#697386] uppercase tracking-wider">Estimated Value</span>
                     <div className="text-xl font-bold text-[#171B26] tabular-nums mt-0.5">
-                      ₹{Number(viewingLead.value).toLocaleString('en-IN')}
+                      ₹{parseNumericValue(viewingLead.value).toLocaleString('en-IN')}
                     </div>
                   </div>
                   <div>

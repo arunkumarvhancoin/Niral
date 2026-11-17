@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useWorkspace } from '../../components/providers/workspace-provider';
 import { CRMService } from '../../lib/services/crm-service';
 import { createClient } from '../../lib/supabase/client';
+import { isSuperAdmin } from '../../lib/permissions';
+import { OrganizationCreationInvite } from '../../lib/types/crm';
 import {
   Building2,
   Plus,
@@ -21,6 +23,11 @@ import {
   EyeOff,
   User,
   Lock,
+  UserPlus,
+  Sparkles,
+  Copy,
+  Check,
+  Trash2,
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { LogoUpload } from '../../components/ui/logo-upload';
@@ -40,10 +47,11 @@ function OnboardingContent() {
   const searchParams = useSearchParams();
   const initialMode = searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
   const initialStep = (searchParams.get('step') as 'select' | 'create') || 'select';
+  const queryEmail = searchParams.get('email') || '';
 
   // Auth Form State (when user is not yet logged in)
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>(initialMode);
-  const [authEmail, setAuthEmail] = useState('');
+  const [authEmail, setAuthEmail] = useState(queryEmail);
   const [authPassword, setAuthPassword] = useState('');
   const [authFullName, setAuthFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -56,6 +64,120 @@ function OnboardingContent() {
   const [selectingOrgId, setSelectingOrgId] = useState<string | null>(null);
   const [filterQuery, setFilterQuery] = useState('');
   const router = useRouter();
+
+  // Super Admin & Creation Permissions State
+  const isSuper = isSuperAdmin(currentUser);
+  const [canCreateOrg, setCanCreateOrg] = useState(false);
+  const [hasOrgInvite, setHasOrgInvite] = useState(false);
+  const [checkingOrgPermission, setCheckingOrgPermission] = useState(true);
+  const [orgCreationLimitReached, setOrgCreationLimitReached] = useState(false);
+
+  // Super Admin Org Creation Invite Modal State
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteNote, setInviteNote] = useState('');
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
+  const [inviteSuccessLink, setInviteSuccessLink] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [creationInvitesList, setCreationInvitesList] = useState<OrganizationCreationInvite[]>([]);
+  const [isLoadingInvitesList, setIsLoadingInvitesList] = useState(false);
+
+  // Check user org creation permission
+  useEffect(() => {
+    if (!currentUser) {
+      setCanCreateOrg(false);
+      setHasOrgInvite(false);
+      setOrgCreationLimitReached(false);
+      setCheckingOrgPermission(false);
+      return;
+    }
+
+    let isMounted = true;
+    const evaluatePermissions = async () => {
+      setCheckingOrgPermission(true);
+      const res = await CRMService.canUserCreateOrganization(currentUser.email, currentUser.id);
+      if (isMounted) {
+        setCanCreateOrg(res.allowed);
+        setHasOrgInvite(!res.isSuperAdmin && res.allowed);
+        setOrgCreationLimitReached(res.reason === 'limit_reached');
+        setCheckingOrgPermission(false);
+      }
+    };
+
+    evaluatePermissions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser]);
+
+  // If user tries step === 'create' but is not authorized, reset to 'select'
+  useEffect(() => {
+    if (!checkingOrgPermission && !canCreateOrg && step === 'create') {
+      setStep('select');
+      if (orgCreationLimitReached) {
+        toast.error('You can only create 1 organization of your own. You can still join existing organizations if invited.');
+      } else {
+        toast.error('Organization creation is restricted to Super Admins or invited users.');
+      }
+    }
+  }, [canCreateOrg, checkingOrgPermission, step, orgCreationLimitReached]);
+
+  const loadInvitesList = async () => {
+    if (!isSuper) return;
+    setIsLoadingInvitesList(true);
+    try {
+      const list = await CRMService.getOrganizationCreationInvites();
+      setCreationInvitesList(list);
+    } catch (e: any) {
+      console.warn('Failed to load invites list:', e);
+    } finally {
+      setIsLoadingInvitesList(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showInviteModal && isSuper) {
+      loadInvitesList();
+    }
+  }, [showInviteModal, isSuper]);
+
+  const handleSendCreationInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setIsSendingInvite(true);
+    try {
+      const invite = await CRMService.createOrganizationCreationInvite(inviteEmail, inviteNote);
+      toast.success(`Invitation created for ${inviteEmail}!`);
+      const link = `${window.location.origin}/onboarding?mode=signup&email=${encodeURIComponent(invite.email)}`;
+      setInviteSuccessLink(link);
+      setInviteEmail('');
+      setInviteNote('');
+      await loadInvitesList();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to send invite');
+    } finally {
+      setIsSendingInvite(false);
+    }
+  };
+
+  const handleCopyInviteLink = () => {
+    if (!inviteSuccessLink) return;
+    navigator.clipboard.writeText(inviteSuccessLink);
+    setCopiedLink(true);
+    toast.success('Invitation link copied to clipboard!');
+    setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const handleRevokeInvite = async (inviteId: string) => {
+    try {
+      await CRMService.revokeOrganizationCreationInvite(inviteId);
+      toast.success('Invitation revoked');
+      await loadInvitesList();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to revoke invite');
+    }
+  };
 
   // Create Organization Form State
   const [createData, setCreateData] = useState({
@@ -80,39 +202,77 @@ function OnboardingContent() {
     );
   });
 
-  // Handle In-Place Authentication
+  // Handle In-Place Authentication (Production-Grade with API Route + Client Fallback)
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsAuthSubmitting(true);
     setAuthError(null);
 
-    try {
-      const supabase = createClient();
+    const cleanEmail = authEmail.trim().toLowerCase();
+    const endpoint = authMode === 'signin' ? '/api/auth/signin' : '/api/auth/signup';
 
-      if (authMode === 'signin') {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: authEmail,
+    try {
+      // 1. Primary path: Server-side API route handler (bypasses browser adblockers, ISP DNS blocks & cross-origin issues)
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
           password: authPassword,
-        });
-        if (error) throw error;
-        toast.success('Signed in successfully!');
-      } else {
-        const { error } = await supabase.auth.signUp({
-          email: authEmail,
-          password: authPassword,
-          options: {
-            data: {
-              full_name: authFullName,
-            },
-          },
-        });
-        if (error) throw error;
-        toast.success('Account created successfully!');
+          fullName: authFullName.trim(),
+        }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        // If it is a 4xx validation or credential error, display it directly
+        setAuthError(result.error || 'Authentication failed. Please verify your credentials.');
+        return;
       }
 
-      await refreshWorkspace();
-    } catch (err: any) {
-      setAuthError(err.message || 'Authentication failed');
+      // Synchronize browser client session if token returned
+      const supabase = createClient();
+      if (result.session) {
+        await supabase.auth.setSession({
+          access_token: result.session.access_token,
+          refresh_token: result.session.refresh_token,
+        });
+      }
+
+      toast.success(authMode === 'signin' ? 'Signed in successfully!' : 'Account created successfully!');
+      await refreshWorkspace(false);
+    } catch (primaryErr: any) {
+      console.warn('Primary server auth notice:', primaryErr.message);
+
+      // 2. Fallback path: Direct browser client call
+      try {
+        const supabase = createClient();
+        if (authMode === 'signin') {
+          const { error } = await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password: authPassword,
+          });
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.auth.signUp({
+            email: cleanEmail,
+            password: authPassword,
+            options: {
+              data: {
+                full_name: authFullName.trim(),
+              },
+            },
+          });
+          if (error) throw error;
+        }
+
+        toast.success(authMode === 'signin' ? 'Signed in successfully!' : 'Account created successfully!');
+        await refreshWorkspace(false);
+      } catch (fallbackErr: any) {
+        const msg = primaryErr.message || fallbackErr.message || 'Authentication failed. Please verify your credentials.';
+        setAuthError(msg);
+      }
     } finally {
       setIsAuthSubmitting(false);
     }
@@ -230,8 +390,14 @@ function OnboardingContent() {
       {/* RIGHT COLUMN: Authentication & Organization Stepper (Scrollable only if content overflows) */}
       <div className="flex-1 h-full max-h-screen overflow-y-auto p-6 sm:p-10 lg:p-12 flex flex-col items-center no-scrollbar">
         <div className="max-w-xl w-full my-auto py-6 pb-16 space-y-6">
-          {/* STATE 1: NOT AUTHENTICATED -> IN-PLACE SIGN IN / SIGN UP (NO REDIRECT TO ANOTHER PAGE) */}
-          {!currentUser && !isWorkspaceLoading ? (
+          {/* STATE 1: LOADING SESSION */}
+          {isWorkspaceLoading ? (
+            <div className="bg-white rounded-2xl shadow-xl border border-[#E7EAF0] p-12 flex flex-col items-center justify-center space-y-4 animate-in fade-in duration-150">
+              <Loader2 className="w-8 h-8 animate-spin text-[#3659C9]" />
+              <p className="text-xs text-[#697386] font-medium">Verifying authenticated session...</p>
+            </div>
+          ) : !currentUser ? (
+            /* STATE 2: NOT AUTHENTICATED -> IN-PLACE SIGN IN / SIGN UP (NO REDIRECT TO ANOTHER PAGE) */
             <div className="bg-white rounded-2xl shadow-xl border border-[#E7EAF0] p-6 sm:p-8 animate-in fade-in zoom-in-95 duration-150 space-y-6">
               <div>
                 <h1 className="text-xl font-bold text-[#171B26] tracking-tight">
@@ -353,7 +519,7 @@ function OnboardingContent() {
               </form>
             </div>
           ) : (
-            /* STATE 2: AUTHENTICATED -> WORKSPACE SELECTION OR CREATION */
+            /* STATE 3: AUTHENTICATED -> WORKSPACE SELECTION OR CREATION */
             <div className="space-y-4">
               {/* Signed In User Banner */}
               <div className="flex items-center justify-between pb-3 border-b border-[#E7EAF0] text-xs">
@@ -394,6 +560,19 @@ function OnboardingContent() {
                       <h2 className="text-xs font-bold uppercase tracking-wider text-[#697386]">
                         Joined Workspaces ({approvedMemberships.length})
                       </h2>
+                      {isSuper && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInviteSuccessLink(null);
+                            setShowInviteModal(true);
+                          }}
+                          className="inline-flex items-center space-x-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg bg-[#EFF6FF] text-[#1D4ED8] hover:bg-[#DBEAFE] border border-[#BFDBFE] transition-colors cursor-pointer"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                          <span>Invite to Create Org</span>
+                        </button>
+                      )}
                     </div>
 
                     {approvedMemberships.length > 2 && (
@@ -423,7 +602,9 @@ function OnboardingContent() {
                         <Briefcase className="w-8 h-8 text-[#9AA2B1] mx-auto mb-2" />
                         <p className="text-sm font-semibold text-[#171B26]">No organizations joined yet</p>
                         <p className="text-xs text-[#697386] mt-1">
-                          Create your first company below to launch your CRM workspace.
+                          {canCreateOrg
+                            ? 'Create your first company below to launch your CRM workspace.'
+                            : 'Organization creation is restricted. Please contact a platform Super Admin to receive an invitation.'}
                         </p>
                       </div>
                     ) : filteredApprovedMemberships.length === 0 ? (
@@ -503,25 +684,51 @@ function OnboardingContent() {
                   </div>
 
                   <div className="pt-4 border-t border-[#E7EAF0]">
-                    <div
-                      onClick={() => setStep('create')}
-                      className="p-4 rounded-xl border-2 border-dashed border-[#BAC0CE] hover:border-[#3659C9] hover:bg-blue-50/20 text-left transition-all cursor-pointer flex items-center justify-between group"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#3659C9] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
-                          <Plus className="w-4 h-4" />
+                    {canCreateOrg ? (
+                      <div>
+                        {hasOrgInvite && (
+                          <div className="mb-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center space-x-2">
+                            <Sparkles className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                            <span>
+                              <strong>Super Admin Invitation Active:</strong> You are authorized to create a new organization workspace.
+                            </span>
+                          </div>
+                        )}
+                        <div
+                          onClick={() => setStep('create')}
+                          className="p-4 rounded-xl border-2 border-dashed border-[#BAC0CE] hover:border-[#3659C9] hover:bg-blue-50/20 text-left transition-all cursor-pointer flex items-center justify-between group"
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#3659C9] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                              <Plus className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-[#171B26] text-xs sm:text-sm">Create New Organization</h3>
+                              <p className="text-[11px] text-[#697386] mt-0.5">
+                                Start a new company workspace as the <strong>Owner</strong>.
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center text-xs font-semibold text-[#3659C9] pl-2 flex-shrink-0">
+                            <span>Create &rarr;</span>
+                          </div>
                         </div>
+                      </div>
+                    ) : (
+                      <div className="p-3.5 rounded-xl bg-[#F7F8FA] border border-[#E7EAF0] text-xs text-[#697386] flex items-start space-x-2.5">
+                        <Shield className={`w-4 h-4 mt-0.5 flex-shrink-0 ${orgCreationLimitReached ? 'text-[#3659C9]' : 'text-[#9AA2B1]'}`} />
                         <div>
-                          <h3 className="font-bold text-[#171B26] text-xs sm:text-sm">Create New Organization</h3>
-                          <p className="text-[11px] text-[#697386] mt-0.5">
-                            Start a new company workspace as the <strong>Owner</strong>.
-                          </p>
+                          <span className="font-semibold text-[#171B26] block">
+                            {orgCreationLimitReached ? 'Organization Creation Limit (1/1)' : 'Organization Creation Restricted'}
+                          </span>
+                          <span className="mt-0.5 block leading-relaxed">
+                            {orgCreationLimitReached
+                              ? 'You have already created 1 organization of your own. You can still join multiple already existing organizations if invited by their team.'
+                              : 'Only platform Super Admins or users specifically invited by a Super Admin can create new company workspaces.'}
+                          </span>
                         </div>
                       </div>
-                      <div className="flex items-center text-xs font-semibold text-[#3659C9] pl-2 flex-shrink-0">
-                        <span>Create &rarr;</span>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -653,6 +860,140 @@ function OnboardingContent() {
           )}
         </div>
       </div>
+
+      {/* SUPER ADMIN: INVITE USER TO CREATE AN ORGANIZATION MODAL */}
+      {showInviteModal && isSuper && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-[#E7EAF0] max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E7EAF0]">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#3659C9] flex items-center justify-center">
+                  <UserPlus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#171B26]">Invite User to Create Org</h3>
+                  <p className="text-[11px] text-[#697386]">Super Admin Authorization</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowInviteModal(false);
+                  setInviteSuccessLink(null);
+                }}
+                className="p-1 rounded-lg text-[#697386] hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[#697386] leading-relaxed">
+              Grant an email address exclusive authorization to create and own a new company workspace. Only Super Admins and authorized invitees can create organizations.
+            </p>
+
+            <form onSubmit={handleSendCreationInvite} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-[#171B26] mb-1">Invitee Email *</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="partner@company.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  className="w-full text-xs px-3 py-2 rounded-lg border border-[#BAC0CE] focus:border-[#3659C9] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#171B26] mb-1">Note / Reference (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Authorized for partner solar workspace"
+                  value={inviteNote}
+                  onChange={(e) => setInviteNote(e.target.value)}
+                  className="w-full text-xs px-3 py-2 rounded-lg border border-[#BAC0CE] focus:border-[#3659C9] focus:outline-none"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSendingInvite || !inviteEmail.trim()}
+                className="w-full py-2 px-4 rounded-xl bg-[#3659C9] hover:bg-[#2B47A1] text-white text-xs font-semibold transition-colors flex items-center justify-center space-x-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                {isSendingInvite ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+                <span>Authorize & Generate Invite</span>
+              </button>
+            </form>
+
+            {inviteSuccessLink && (
+              <div className="p-3 bg-[#ECFDF5] border border-[#A7F3D0] rounded-xl space-y-2">
+                <div className="flex items-center space-x-1.5 text-xs font-bold text-[#047857]">
+                  <Check className="w-4 h-4" />
+                  <span>Invitation created successfully!</span>
+                </div>
+                <p className="text-[11px] text-[#065F46]">
+                  Share this link with the recipient so they can sign up/in and create their organization:
+                </p>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={inviteSuccessLink}
+                    className="flex-1 text-[11px] bg-white border border-[#A7F3D0] px-2 py-1.5 rounded-lg text-slate-700 font-mono select-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCopyInviteLink}
+                    className="px-3 py-1.5 bg-[#047857] hover:bg-[#065F46] text-white text-xs font-semibold rounded-lg flex items-center space-x-1 transition-colors cursor-pointer"
+                  >
+                    {copiedLink ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedLink ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="pt-3 border-t border-[#E7EAF0] space-y-2">
+              <h4 className="text-xs font-bold text-[#171B26]">Active Creation Invites</h4>
+              {isLoadingInvitesList ? (
+                <div className="p-4 text-center text-xs text-[#697386]">
+                  <Loader2 className="w-4 h-4 animate-spin mx-auto mb-1 text-[#3659C9]" />
+                  Loading invitations...
+                </div>
+              ) : creationInvitesList.length === 0 ? (
+                <p className="text-xs text-[#697386] italic">No creation invitations sent yet.</p>
+              ) : (
+                <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                  {creationInvitesList.map((inv) => (
+                    <div
+                      key={inv.id}
+                      className="p-2.5 rounded-lg border border-[#E7EAF0] bg-[#F7F8FA] flex items-center justify-between text-xs"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="font-semibold text-[#171B26] truncate">{inv.email}</div>
+                        <div className="text-[10px] text-[#697386] truncate">
+                          {inv.note ? `${inv.note} • ` : ''}
+                          Status: <span className={inv.status === 'pending' ? 'text-blue-600 font-medium' : inv.status === 'used' ? 'text-emerald-600 font-medium' : 'text-slate-500'}>{inv.status}</span>
+                        </div>
+                      </div>
+                      {inv.status === 'pending' && (
+                        <button
+                          type="button"
+                          onClick={() => handleRevokeInvite(inv.id)}
+                          className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors cursor-pointer"
+                          title="Revoke invitation"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

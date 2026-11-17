@@ -68,7 +68,7 @@ export default function InviteAcceptancePage() {
             </div>
             <div className="flex items-center justify-between text-slate-500">
               <span>Signed In As:</span>
-              <span className="font-semibold text-slate-900">{currentUser?.email}</span>
+              <span className="font-semibold text-slate-900">{currentUser?.email || 'Not signed in'}</span>
             </div>
           </div>
 
@@ -84,12 +84,25 @@ export default function InviteAcceptancePage() {
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               <span>Invitation Accepted! Redirecting to workspace...</span>
             </div>
+          ) : !currentUser ? (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-600 mb-2">
+                Please sign in or create an account with your invited email address to join this workspace.
+              </p>
+              <button
+                onClick={() => router.push('/onboarding?mode=signin')}
+                className="w-full inline-flex items-center justify-center space-x-2 py-2.5 px-4 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-semibold text-xs shadow-sm transition-colors cursor-pointer"
+              >
+                <span>Sign In or Sign Up to Accept</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           ) : (
             <div className="space-y-3">
               <button
                 onClick={handleAccept}
                 disabled={isLoading}
-                className="w-full inline-flex items-center justify-center space-x-2 py-2.5 px-4 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-semibold text-xs shadow-sm transition-colors"
+                className="w-full inline-flex items-center justify-center space-x-2 py-2.5 px-4 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-semibold text-xs shadow-sm transition-colors cursor-pointer"
               >
                 <span>{isLoading ? 'Verifying & Joining...' : 'Accept Invitation & Enter Workspace'}</span>
                 <ArrowRight className="w-4 h-4" />
@@ -97,7 +110,7 @@ export default function InviteAcceptancePage() {
 
               <button
                 onClick={() => router.push('/dashboard')}
-                className="w-full py-2 text-xs font-medium text-slate-500 hover:text-slate-800"
+                className="w-full py-2 text-xs font-medium text-slate-500 hover:text-slate-800 cursor-pointer"
               >
                 Decline or Return to App
               </button>

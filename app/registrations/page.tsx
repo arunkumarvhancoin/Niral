@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { AppShell } from '../../components/layout/app-shell';
 import { useWorkspace } from '../../components/providers/workspace-provider';
 import { createClient } from '../../lib/supabase/client';
+import { parseNumericValue } from '../../lib/services/crm-service';
 import { Lead } from '../../lib/types/crm';
 import { toast } from '../../lib/stores/toast-store';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
@@ -257,7 +258,7 @@ export default function RegistrationsPage() {
         `"${reg.phone || ''}"`,
         `"${members.replace(/"/g, '""')}"`,
         `"${slot.replace(/"/g, '""')}"`,
-        `"₹${(reg.value || 649).toLocaleString('en-IN')}"`,
+        `"₹${parseNumericValue(reg.value || 649).toLocaleString('en-IN')}"`,
         `"${payment.label}"`,
         `"${hasScreenshot}"`,
         `"${new Date(reg.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}"`,
@@ -312,7 +313,7 @@ export default function RegistrationsPage() {
   const totalRegistrations = registrations.length;
   const totalAttendees = registrations.reduce((sum, r) => sum + extractHeadcount(r.title), 0);
   const paidRegistrations = registrations.filter((r) => extractPaymentStatus(r).status === 'PAID');
-  const totalPayableRupees = paidRegistrations.reduce((sum, r) => sum + (Number(r.value) || 0), 0);
+  const totalPayableRupees = paidRegistrations.reduce((sum, r) => sum + parseNumericValue(r.value), 0);
 
   // Non-Bharat Play organizations do not have access to the registrations module
   if (!isBharatPlay(currentOrg)) {
@@ -495,7 +496,7 @@ export default function RegistrationsPage() {
 
                     <div className="text-right shrink-0">
                       <div className="text-base font-extrabold text-slate-900">
-                        ₹{Number(reg.value || 649).toLocaleString('en-IN')}
+                        ₹{parseNumericValue(reg.value || 649).toLocaleString('en-IN')}
                       </div>
                       <div className="flex items-center justify-end gap-1 mt-1">
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
@@ -662,7 +663,7 @@ export default function RegistrationsPage() {
 
                         {/* Total Payable (Rupees) */}
                         <td className="py-2.5 px-4 font-semibold text-[#171B26] tabular-nums">
-                          ₹{Number(reg.value || 649).toLocaleString('en-IN')}
+                          ₹{parseNumericValue(reg.value || 649).toLocaleString('en-IN')}
                         </td>
 
                         {/* Payment Status Column */}
@@ -855,7 +856,7 @@ export default function RegistrationsPage() {
                     <div>
                       <span className="text-[11px] font-medium text-[#697386] uppercase tracking-wider block">Total Payable</span>
                       <span className="text-[14px] font-semibold text-[#171B26] mt-0.5 block tabular-nums">
-                        ₹{Number(selectedReg.value || 649).toLocaleString('en-IN')}
+                        ₹{parseNumericValue(selectedReg.value || 649).toLocaleString('en-IN')}
                       </span>
                     </div>
 

@@ -148,7 +148,10 @@ export function hasAnyRole(
 /**
  * Super Admin accounts that possess multi-organization visibility and global management access.
  */
-export const SUPER_ADMIN_EMAILS: string[] = ['arunkumar@vhan.co.in'];
+export const SUPER_ADMIN_EMAILS: string[] = [
+  'arunkumar@vhan.co.in',
+  'arunkumar@vhanbe.com',
+];
 
 /**
  * Checks if a user profile, user object, or email belongs to a Super Admin.

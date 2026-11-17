@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppShell } from '../../components/layout/app-shell';
 import { useWorkspace } from '../../components/providers/workspace-provider';
-import { CRMService } from '../../lib/services/crm-service';
+import { CRMService, parseNumericValue } from '../../lib/services/crm-service';
 import { Deal, Pipeline, PipelineStage, Contact, Task } from '../../lib/types/crm';
 import { hasPermission } from '../../lib/permissions';
 import { toast } from '../../lib/stores/toast-store';
@@ -50,6 +50,7 @@ export default function DealsPage() {
     memberships,
   } = useWorkspace();
   const [pipelines, setPipelines] = useState<(Pipeline & { stages: PipelineStage[] })[]>([]);
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string>('');
   const [deals, setDeals] = useState<Deal[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -72,8 +73,9 @@ export default function DealsPage() {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isSavingDealTask, setIsSavingDealTask] = useState(false);
 
-  // New Deal Modal
+  // Deal Modal (Create & Edit)
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
   const [formData, setFormData] = useState(() => ({
     organization_id: currentOrg?.id || '',
     title: '',
@@ -82,6 +84,7 @@ export default function DealsPage() {
     stage_id: '',
     contact_id: '',
     expected_close_date: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+    status: 'open' as Deal['status'],
   }));
 
   const canCreate = isSuper || hasPermission(currentRole, currentStatus, 'crm:deals:create', currentUser);
@@ -111,13 +114,30 @@ export default function DealsPage() {
       const contactList = await CRMService.getContacts(effectiveOrgIds);
       setContacts(contactList);
 
-      if (pipes.length > 0 && pipes[0].stages?.length > 0) {
-        setFormData((prev) => ({
-          ...prev,
-          organization_id: currentOrg?.id || effectiveOrgIds[0],
-          pipeline_id: pipes[0].id,
-          stage_id: pipes[0].stages[0].id,
-        }));
+      if (pipes.length > 0) {
+        // Auto-select pipeline that has deals or is default
+        const pipeWithDeals = pipes.find((p) =>
+          dealList.some((d) => d.pipeline_id === p.id || p.stages?.some((s) => s.id === d.stage_id))
+        );
+        const defaultPipe = pipes.find((p) => p.is_default) || pipes[0];
+        const chosenPipe = pipeWithDeals || defaultPipe;
+        if (chosenPipe) {
+          setSelectedPipelineId((prev) => {
+            if (prev && pipes.some((p) => p.id === prev)) {
+              return prev;
+            }
+            return chosenPipe.id;
+          });
+
+          if (chosenPipe.stages?.length > 0) {
+            setFormData((prev) => ({
+              ...prev,
+              organization_id: currentOrg?.id || effectiveOrgIds[0],
+              pipeline_id: chosenPipe.id,
+              stage_id: chosenPipe.stages[0].id,
+            }));
+          }
+        }
       }
     } catch (err) {
       console.error(err);
@@ -168,7 +188,7 @@ export default function DealsPage() {
     if (!targetOrgId) return;
 
     try {
-      const activePipeline = pipelines[0];
+      const activePipeline = pipelines.find((p) => p.id === selectedPipelineId) || pipelines[0];
       const targetStage = activePipeline?.stages?.find((s) => s.id === newStageId);
       const isWon = targetStage?.name.toLowerCase().includes('won');
       const isLost = targetStage?.name.toLowerCase().includes('lost');
@@ -176,11 +196,16 @@ export default function DealsPage() {
 
       // Optimistic update
       setDeals((prev) =>
-        prev.map((d) => (d.id === dealId ? { ...d, stage_id: newStageId, status: nextStatus } : d))
+        prev.map((d) =>
+          d.id === dealId
+            ? { ...d, stage_id: newStageId, pipeline_id: activePipeline?.id || d.pipeline_id, status: nextStatus }
+            : d
+        )
       );
 
       await CRMService.updateDeal(dealId, targetOrgId, {
         stage_id: newStageId,
+        pipeline_id: activePipeline?.id,
         status: nextStatus,
       });
 
@@ -228,7 +253,7 @@ export default function DealsPage() {
     const targetOrgId = deal?.organization_id || currentOrg?.id;
     if (!targetOrgId) return;
 
-    const activePipeline = pipelines[0];
+    const activePipeline = pipelines.find((p) => p.id === selectedPipelineId) || pipelines[0];
     const firstStageId = targetStageId || activePipeline?.stages?.[0]?.id;
     if (!firstStageId) {
       toast.error('No pipeline stage available to reactivate deal into.');
@@ -237,13 +262,18 @@ export default function DealsPage() {
 
     // Optimistic update
     setDeals((prev) =>
-      prev.map((d) => (d.id === dealId ? { ...d, status: 'open', stage_id: firstStageId } : d))
+      prev.map((d) =>
+        d.id === dealId
+          ? { ...d, status: 'open', stage_id: firstStageId, pipeline_id: activePipeline?.id || d.pipeline_id }
+          : d
+      )
     );
 
     try {
       await CRMService.updateDeal(dealId, targetOrgId, {
         status: 'open',
         stage_id: firstStageId,
+        pipeline_id: activePipeline?.id,
       });
       toast.success('Deal reactivated and returned to Active Pipeline!');
       await loadPipelineData();
@@ -298,17 +328,84 @@ export default function DealsPage() {
     message: '',
   });
 
+  const handleOpenCreateModal = () => {
+    const defaultPipe = pipelines.find((p) => p.id === selectedPipelineId) || pipelines[0];
+    const firstStage = defaultPipe?.stages?.[0];
+    setEditingDeal(null);
+    setFormData({
+      organization_id: currentOrg?.id || effectiveOrgIds[0] || '',
+      title: '',
+      value: 50000,
+      pipeline_id: defaultPipe?.id || '',
+      stage_id: firstStage?.id || '',
+      contact_id: '',
+      expected_close_date: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+      status: 'open',
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (deal: Deal) => {
+    // Immediately close the details popup so the edit popup opens right in front, never behind it
+    setViewingDeal(null);
+    setOpenMenuDealId(null);
+    setEditingDeal(deal);
+    const pipe = pipelines.find((p) => p.id === deal.pipeline_id) || pipelines.find((p) => p.id === selectedPipelineId) || pipelines[0];
+    setFormData({
+      organization_id: deal.organization_id || currentOrg?.id || '',
+      title: deal.title || '',
+      value: parseNumericValue(deal.value),
+      pipeline_id: deal.pipeline_id || pipe?.id || '',
+      stage_id: deal.stage_id || pipe?.stages?.[0]?.id || '',
+      contact_id: deal.contact_id || '',
+      expected_close_date: deal.expected_close_date || '',
+      status: deal.status || 'open',
+    });
+    setIsModalOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const targetOrgId = formData.organization_id || currentOrg?.id;
+    const targetOrgId = formData.organization_id || editingDeal?.organization_id || currentOrg?.id;
     if (!targetOrgId || !currentUser) return;
     try {
-      await CRMService.createDeal(targetOrgId, formData, currentUser.id);
-      toast.success(`Deal "${formData.title}" created successfully!`);
+      if (editingDeal) {
+        await CRMService.updateDeal(editingDeal.id, targetOrgId, {
+          title: formData.title.trim(),
+          value: parseNumericValue(formData.value),
+          pipeline_id: formData.pipeline_id || undefined,
+          stage_id: formData.stage_id || undefined,
+          contact_id: formData.contact_id || null,
+          expected_close_date: formData.expected_close_date || null,
+          status: formData.status,
+        });
+        toast.success(`Deal "${formData.title}" updated successfully!`);
+        setEditingDeal(null);
+        if (viewingDeal?.id === editingDeal.id) {
+          setViewingDeal((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  title: formData.title.trim(),
+                  value: parseNumericValue(formData.value),
+                  pipeline_id: formData.pipeline_id || prev.pipeline_id,
+                  stage_id: formData.stage_id || prev.stage_id,
+                  contact_id: formData.contact_id || null,
+                  expected_close_date: formData.expected_close_date || null,
+                  status: formData.status,
+                  contact: contacts.find((c) => c.id === formData.contact_id) || prev.contact,
+                }
+              : null
+          );
+        }
+      } else {
+        await CRMService.createDeal(targetOrgId, formData, currentUser.id);
+        toast.success(`Deal "${formData.title}" created successfully!`);
+      }
       setIsModalOpen(false);
       await loadPipelineData();
     } catch (err: any) {
-      toast.error(err.message || 'Creation failed');
+      toast.error(err.message || (editingDeal ? 'Update failed' : 'Creation failed'));
     }
   };
 
@@ -336,22 +433,115 @@ export default function DealsPage() {
     });
   };
 
-  const activePipeline = pipelines[0];
+  const activePipeline = useMemo(() => {
+    if (pipelines.length === 0) return null;
+    return pipelines.find((p) => p.id === selectedPipelineId) || pipelines[0];
+  }, [pipelines, selectedPipelineId]);
 
   // Deal Categorization
   // Active deals on board: open deals + closed won deals (excluding lost & inactive)
-  const activePipelineDeals = deals.filter((d) => d.status !== 'lost' && d.status !== 'inactive');
-  const openDeals = deals.filter((d) => d.status === 'open');
-  const wonDeals = deals.filter((d) => d.status === 'won');
-  const lostDeals = deals.filter((d) => d.status === 'lost');
-  const inactiveDeals = deals.filter((d) => d.status === 'inactive');
+  const activePipelineDeals = useMemo(
+    () => deals.filter((d) => d.status !== 'lost' && d.status !== 'inactive'),
+    [deals]
+  );
+  const openDeals = useMemo(() => deals.filter((d) => d.status === 'open'), [deals]);
+  const wonDeals = useMemo(() => deals.filter((d) => d.status === 'won'), [deals]);
+  const lostDeals = useMemo(() => deals.filter((d) => d.status === 'lost'), [deals]);
+  const inactiveDeals = useMemo(() => deals.filter((d) => d.status === 'inactive'), [deals]);
 
-  const totalPipelineValue = openDeals.reduce((sum, d) => sum + Number(d.value || 0), 0);
-  const wonValue = wonDeals.reduce((sum, d) => sum + Number(d.value || 0), 0);
-  const lostValue = lostDeals.reduce((sum, d) => sum + Number(d.value || 0), 0);
-  const inactiveValue = inactiveDeals.reduce((sum, d) => sum + Number(d.value || 0), 0);
+  // Robust stage mapping for active board deals:
+  // Guarantees that every active deal is reliably displayed in the appropriate stage column,
+  // matching direct stage_id, joined stage ID, stage name, or gracefully placing in the first stage.
+  const stageDealMap = useMemo(() => {
+    const map = new Map<string, Deal[]>();
+    if (!activePipeline?.stages || activePipeline.stages.length === 0) return map;
+
+    const stages = activePipeline.stages;
+    stages.forEach((s) => map.set(s.id, []));
+
+    const firstStage = stages[0];
+    const wonStage = stages.find((s) => s.probability === 100 || s.name.toLowerCase().includes('won')) || stages[stages.length - 1];
+
+    activePipelineDeals.forEach((deal) => {
+      // If multiple pipelines exist and deal is explicitly bound to another pipeline, skip from current board view
+      if (pipelines.length > 1 && deal.pipeline_id && deal.pipeline_id !== activePipeline.id) {
+        const belongsToOther = pipelines.some(
+          (p) => p.id === deal.pipeline_id && p.id !== activePipeline.id
+        );
+        if (belongsToOther) {
+          return;
+        }
+      }
+
+      // 1. Direct stage ID match
+      let matchedStage = stages.find((s) => s.id === deal.stage_id);
+
+      // 2. Joined stage object ID match
+      if (!matchedStage && deal.stage?.id) {
+        const stageObjId = deal.stage.id;
+        matchedStage = stages.find((s) => s.id === stageObjId);
+      }
+
+      // 3. Stage name match (case-insensitive)
+      if (!matchedStage && deal.stage?.name) {
+        const dealStageName = deal.stage.name.toLowerCase().trim();
+        matchedStage = stages.find((s) => s.name.toLowerCase().trim() === dealStageName);
+      }
+
+      // 4. Fallback for unmapped active deals:
+      // Never hide active opportunities! Won deals go to won stage; open deals go to initial pipeline stage.
+      if (!matchedStage) {
+        matchedStage = deal.status === 'won' ? wonStage : firstStage;
+      }
+
+      if (matchedStage) {
+        const list = map.get(matchedStage.id) || [];
+        list.push(deal);
+        map.set(matchedStage.id, list);
+      }
+    });
+
+    return map;
+  }, [activePipeline, activePipelineDeals, pipelines]);
+
+  const boardTotalDealsCount = useMemo(() => {
+    let count = 0;
+    stageDealMap.forEach((list) => {
+      count += list.length;
+    });
+    return count;
+  }, [stageDealMap]);
+
+  // Active deals mapped to the current board
+  const activeBoardDeals = useMemo(() => {
+    const list: Deal[] = [];
+    stageDealMap.forEach((stageList) => {
+      list.push(...stageList);
+    });
+    return list;
+  }, [stageDealMap]);
+
+  const activeBoardOpenDeals = useMemo(
+    () => activeBoardDeals.filter((d) => d.status === 'open'),
+    [activeBoardDeals]
+  );
+
+  // When viewing a specific pipeline, compute stats for that pipeline so card totals exactly match column sums:
+  const displayPipelineValue = useMemo(() => {
+    if (pipelines.length > 1) {
+      return activeBoardOpenDeals.reduce((sum, d) => sum + parseNumericValue(d.value), 0);
+    }
+    return openDeals.reduce((sum, d) => sum + parseNumericValue(d.value), 0);
+  }, [pipelines.length, activeBoardOpenDeals, openDeals]);
+
+  const displayOpenDealsCount = pipelines.length > 1 ? activeBoardOpenDeals.length : openDeals.length;
+
+  const totalPipelineValue = openDeals.reduce((sum, d) => sum + parseNumericValue(d.value), 0);
+  const wonValue = wonDeals.reduce((sum, d) => sum + parseNumericValue(d.value), 0);
+  const lostValue = lostDeals.reduce((sum, d) => sum + parseNumericValue(d.value), 0);
+  const inactiveValue = inactiveDeals.reduce((sum, d) => sum + parseNumericValue(d.value), 0);
   const winRate = deals.length > 0 ? Math.round((wonDeals.length / deals.length) * 100) : 0;
-  const avgDealSize = deals.length > 0 ? Math.round(deals.reduce((sum, d) => sum + Number(d.value || 0), 0) / deals.length) : 0;
+  const avgDealSize = deals.length > 0 ? Math.round(deals.reduce((sum, d) => sum + parseNumericValue(d.value), 0) / deals.length) : 0;
 
   // Filtered lists for archive search
   const filteredLostDeals = lostDeals.filter((d) => {
@@ -381,7 +571,7 @@ export default function DealsPage() {
           </div>
           {canCreate && (
             <button
-              onClick={() => setIsModalOpen(true)}
+              onClick={handleOpenCreateModal}
               className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-[#3659C9] hover:bg-[#2B47A1] text-white text-[13px] font-medium shadow-xs transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -409,8 +599,8 @@ export default function DealsPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wider text-[#697386]">Active Pipeline</p>
-                <p className="text-xl font-bold text-[#171B26] truncate tabular-nums mt-0.5">₹{totalPipelineValue.toLocaleString('en-IN')}</p>
-                <p className="text-xs text-[#697386] mt-0.5">{openDeals.length} open opportunities</p>
+                <p className="text-xl font-bold text-[#171B26] truncate tabular-nums mt-0.5">₹{displayPipelineValue.toLocaleString('en-IN')}</p>
+                <p className="text-xs text-[#697386] mt-0.5">{displayOpenDealsCount} open opportunities</p>
               </div>
             </div>
           </div>
@@ -484,7 +674,7 @@ export default function DealsPage() {
               <BarChart3 className="w-3.5 h-3.5 text-[#3659C9]" />
               <span>Active Pipeline</span>
               <span className="px-1.5 py-0.2 rounded text-[10px] bg-[#F0F4FE] text-[#3659C9] font-medium border border-[#3659C9]/20 tabular-nums">
-                {activePipelineDeals.length}
+                {boardTotalDealsCount}
               </span>
             </button>
 
@@ -529,18 +719,45 @@ export default function DealsPage() {
             </button>
           </div>
 
-          {activeView !== 'pipeline' && (
-            <div className="relative w-full sm:w-64">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#9AA2B1]" />
-              <input
-                type="text"
-                placeholder={`Search ${activeView === 'lost' ? 'lost' : 'inactive'} deals...`}
-                value={archiveSearch}
-                onChange={(e) => setArchiveSearch(e.target.value)}
-                className="w-full text-[13px] pl-8 pr-3 py-1.5 rounded-md border border-[#E7EAF0] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] bg-white text-[#171B26] placeholder:text-[#9AA2B1] transition-all"
-              />
-            </div>
-          )}
+          <div className="flex items-center space-x-2.5">
+            {activeView === 'pipeline' && pipelines.length > 1 && (
+              <div className="flex items-center space-x-1.5">
+                <span className="text-[12px] font-medium text-[#697386]">Pipeline:</span>
+                <select
+                  value={activePipeline?.id || ''}
+                  onChange={(e) => setSelectedPipelineId(e.target.value)}
+                  className="text-[12px] font-semibold bg-white border border-[#E7EAF0] rounded-md px-2.5 py-1 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all cursor-pointer shadow-2xs"
+                >
+                  {pipelines.map((p) => {
+                    const pipeDealsCount = deals.filter(
+                      (d) =>
+                        d.status !== 'lost' &&
+                        d.status !== 'inactive' &&
+                        (d.pipeline_id === p.id || p.stages?.some((s) => s.id === d.stage_id))
+                    ).length;
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {pipeDealsCount > 0 ? `(${pipeDealsCount})` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+
+            {activeView !== 'pipeline' && (
+              <div className="relative w-full sm:w-64">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#9AA2B1]" />
+                <input
+                  type="text"
+                  placeholder={`Search ${activeView === 'lost' ? 'lost' : 'inactive'} deals...`}
+                  value={archiveSearch}
+                  onChange={(e) => setArchiveSearch(e.target.value)}
+                  className="w-full text-[13px] pl-8 pr-3 py-1.5 rounded-md border border-[#E7EAF0] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] bg-white text-[#171B26] placeholder:text-[#9AA2B1] transition-all"
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* =========================================================================
@@ -559,8 +776,8 @@ export default function DealsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-start select-none">
                 {activePipeline.stages.map((stage) => {
                   // Strictly filter for active pipeline deals (hide lost and inactive from the open board)
-                  const stageDeals = activePipelineDeals.filter((d) => d.stage_id === stage.id);
-                  const stageTotalValue = stageDeals.reduce((sum, d) => sum + Number(d.value || 0), 0);
+                  const stageDeals = stageDealMap.get(stage.id) || [];
+                  const stageTotalValue = stageDeals.reduce((sum, d) => sum + parseNumericValue(d.value), 0);
                   const isDragOver = dragOverStageId === stage.id;
                   const stageColor = stage.color || '#3659C9';
 
@@ -686,6 +903,18 @@ export default function DealsPage() {
                                           <Eye className="w-4 h-4 text-[#3659C9]" />
                                           <span>View Deal Details</span>
                                         </button>
+                                        {canUpdate && (
+                                          <button
+                                            onClick={() => {
+                                              setOpenMenuDealId(null);
+                                              handleOpenEditModal(deal);
+                                            }}
+                                            className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-[#171B26] hover:bg-[#F1F3F7] font-medium transition-colors"
+                                          >
+                                            <Edit className="w-4 h-4 text-[#3659C9]" />
+                                            <span>Edit Deal</span>
+                                          </button>
+                                        )}
                                         <div className="my-1 border-t border-[#E7EAF0]" />
                                         {canUpdate && (
                                           <>
@@ -762,9 +991,13 @@ export default function DealsPage() {
                                   </span>
 
                                   {/* Direct Stage / Status dropdown */}
-                                  {canUpdate && (
+                                  {canUpdate && activePipeline && (
                                     <select
-                                      value={deal.stage_id}
+                                      value={
+                                        activePipeline.stages.some((s) => s.id === deal.stage_id)
+                                          ? deal.stage_id
+                                          : stage.id
+                                      }
                                       onChange={(e) => {
                                         e.stopPropagation();
                                         const val = e.target.value;
@@ -904,14 +1137,24 @@ export default function DealsPage() {
 
                       <div className="flex items-center space-x-1.5">
                         {canUpdate && (
-                          <button
-                            onClick={() => handleReactivateDeal(deal.id)}
-                            className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-md bg-white hover:bg-[#F1F3F7] text-[#171B26] text-[12px] font-medium border border-[#E7EAF0] transition-colors shadow-2xs"
-                            title="Reactivate and return to Active Pipeline"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5 text-[#3659C9]" />
-                            <span>Reactivate</span>
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleOpenEditModal(deal)}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-md bg-white hover:bg-[#F1F3F7] text-[#171B26] text-[12px] font-medium border border-[#E7EAF0] transition-colors shadow-2xs"
+                              title="Edit Deal details and valuation"
+                            >
+                              <Edit className="w-3.5 h-3.5 text-[#3659C9]" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              onClick={() => handleReactivateDeal(deal.id)}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-md bg-white hover:bg-[#F1F3F7] text-[#171B26] text-[12px] font-medium border border-[#E7EAF0] transition-colors shadow-2xs"
+                              title="Reactivate and return to Active Pipeline"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 text-[#3659C9]" />
+                              <span>Reactivate</span>
+                            </button>
+                          </>
                         )}
                         {canDelete && (
                           <button
@@ -1030,6 +1273,14 @@ export default function DealsPage() {
                         {canUpdate && (
                           <>
                             <button
+                              onClick={() => handleOpenEditModal(deal)}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-md bg-white hover:bg-[#F1F3F7] text-[#171B26] text-[12px] font-medium border border-[#E7EAF0] transition-colors shadow-2xs"
+                              title="Edit Deal details and valuation"
+                            >
+                              <Edit className="w-3.5 h-3.5 text-[#3659C9]" />
+                              <span>Edit</span>
+                            </button>
+                            <button
                               onClick={() => handleReactivateDeal(deal.id)}
                               className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-md bg-white hover:bg-[#F1F3F7] text-[#171B26] text-[12px] font-medium border border-[#E7EAF0] transition-colors shadow-2xs"
                               title="Reactivate and return to Active Pipeline"
@@ -1064,15 +1315,28 @@ export default function DealsPage() {
           </div>
         )}
 
-        {/* Modal: New Deal */}
+        {/* Modal: New / Edit Deal */}
         {isModalOpen && (
-          <div className="fixed inset-0 bg-[#171B26]/40 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-[#171B26]/50 backdrop-blur-[2px] flex items-center justify-center z-[60] p-4">
             <div className="bg-white rounded-xl shadow-[0_12px_36px_rgba(0,0,0,0.15)] border border-[#E7EAF0] max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
               <div className="px-6 py-4 border-b border-[#E7EAF0] flex items-center justify-between flex-shrink-0 bg-[#F8FAFC]">
-                <h3 className="font-semibold text-[#171B26] text-sm">New Deal</h3>
+                <div>
+                  <h3 className="font-semibold text-[#171B26] text-base">
+                    {editingDeal ? 'Edit Deal Opportunity' : 'Create New Opportunity'}
+                  </h3>
+                  <p className="text-[12px] text-[#697386] mt-0.5">
+                    {editingDeal
+                      ? 'Update the deal value, stage, target close date, and associated contact.'
+                      : 'Add a prospective deal to your sales pipeline.'}
+                  </p>
+                </div>
                 <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="text-[#697386] hover:text-[#171B26] p-1 rounded-md hover:bg-[#F1F3F7] transition-colors"
+                  type="button"
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setEditingDeal(null);
+                  }}
+                  className="text-[#697386] hover:text-[#171B26] p-1.5 rounded-md hover:bg-[#F1F3F7] transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1080,7 +1344,7 @@ export default function DealsPage() {
 
               <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
                 <div className="p-6 space-y-4 overflow-y-auto flex-1 no-scrollbar">
-                {isSuper && memberships.length > 0 && (
+                {isSuper && memberships.length > 0 && !editingDeal && (
                   <div>
                     <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">
                       Organization * <span className="text-[11px] text-[#5B21B6] font-normal">(Super Admin)</span>
@@ -1133,14 +1397,45 @@ export default function DealsPage() {
                   </div>
                 </div>
 
+                {pipelines.length > 1 && (
+                  <div>
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Pipeline</label>
+                    <select
+                      value={formData.pipeline_id || activePipeline?.id || ''}
+                      onChange={(e) => {
+                        const newPipeId = e.target.value;
+                        const pipe = pipelines.find((p) => p.id === newPipeId);
+                        setFormData({
+                          ...formData,
+                          pipeline_id: newPipeId,
+                          stage_id: pipe?.stages?.[0]?.id || formData.stage_id,
+                        });
+                      }}
+                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
+                    >
+                      {pipelines.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div>
-                  <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Initial Stage</label>
+                  <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">
+                    {editingDeal ? 'Pipeline Stage' : 'Initial Stage'}
+                  </label>
                   <select
                     value={formData.stage_id}
                     onChange={(e) => setFormData({ ...formData, stage_id: e.target.value })}
                     className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                   >
-                    {activePipeline?.stages?.map((stage) => (
+                    {(
+                      pipelines.find((p) => p.id === formData.pipeline_id)?.stages ||
+                      activePipeline?.stages ||
+                      []
+                    ).map((stage) => (
                       <option key={stage.id} value={stage.id}>
                         {stage.name} ({stage.probability}%)
                       </option>
@@ -1163,12 +1458,31 @@ export default function DealsPage() {
                     ))}
                   </select>
                 </div>
+
+                {editingDeal && (
+                  <div>
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Deal Status</label>
+                    <select
+                      value={formData.status}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value as Deal['status'] })}
+                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
+                    >
+                      <option value="open">Active / Open</option>
+                      <option value="won">Closed Won 🏆</option>
+                      <option value="lost">Closed Lost</option>
+                      <option value="inactive">Inactive / On-Hold</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div className="px-6 py-4 border-t border-[#E7EAF0] bg-slate-50 flex items-center justify-end space-x-2 flex-shrink-0">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setEditingDeal(null);
+                  }}
                   className="px-3.5 py-2 text-[13px] font-medium text-[#697386] hover:text-[#171B26] hover:bg-[#F1F3F7] rounded-md transition-colors"
                 >
                   Cancel
@@ -1177,7 +1491,7 @@ export default function DealsPage() {
                   type="submit"
                   className="px-4 py-2 text-[13px] font-medium text-white bg-[#3659C9] hover:bg-[#2B47A1] rounded-md shadow-xs transition-colors"
                 >
-                  Create Deal
+                  {editingDeal ? 'Save Changes' : 'Create Deal'}
                 </button>
               </div>
             </form>
@@ -1196,12 +1510,26 @@ export default function DealsPage() {
                   {viewingDeal.organization?.name || 'Organization Deal'}
                 </p>
               </div>
-              <button
-                onClick={() => setViewingDeal(null)}
-                className="text-[#697386] hover:text-[#171B26] p-1.5 rounded-md hover:bg-[#F1F3F7] transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center space-x-2">
+                {canUpdate && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleOpenEditModal(viewingDeal);
+                    }}
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-white hover:bg-slate-50 border border-[#E7EAF0] text-[#171B26] shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Edit className="w-3.5 h-3.5 text-[#3659C9]" />
+                    <span>Edit Deal</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setViewingDeal(null)}
+                  className="text-[#697386] hover:text-[#171B26] p-1.5 rounded-md hover:bg-[#F1F3F7] transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div className="p-6 space-y-4 overflow-y-auto flex-1 no-scrollbar">
@@ -1265,7 +1593,11 @@ export default function DealsPage() {
                       Pipeline Stage
                     </label>
                     <select
-                      value={viewingDeal.stage_id}
+                      value={
+                        activePipeline.stages.some((s) => s.id === viewingDeal.stage_id)
+                          ? viewingDeal.stage_id
+                          : activePipeline.stages[0]?.id || ''
+                      }
                       onChange={async (e) => {
                         const newStageId = e.target.value;
                         await handleStageChange(viewingDeal.id, newStageId);

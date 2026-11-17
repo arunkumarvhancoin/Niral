@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { AppShell } from '../../components/layout/app-shell';
 import { useWorkspace } from '../../components/providers/workspace-provider';
-import { CRMService } from '../../lib/services/crm-service';
+import { CRMService, parseNumericValue } from '../../lib/services/crm-service';
 import { Task, OrganizationMember, Lead, Contact, Deal } from '../../lib/types/crm';
 import { hasPermission } from '../../lib/permissions';
 import { toast } from '../../lib/stores/toast-store';
@@ -756,7 +756,7 @@ export default function TasksPage() {
                             .filter((d) => !taskFormData.organization_id || d.organization_id === taskFormData.organization_id)
                             .map((d) => (
                               <option key={d.id} value={d.id}>
-                                {d.title} (₹{Number(d.value).toLocaleString('en-IN')})
+                                {d.title} (₹{parseNumericValue(d.value).toLocaleString('en-IN')})
                               </option>
                             ))}
                         </select>

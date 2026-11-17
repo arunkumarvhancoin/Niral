@@ -245,7 +245,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
     // Listen to Supabase auth state changes in real time
     const supabase = createClient();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
       if (event === 'SIGNED_OUT') {
         setCurrentUser(null);
         reset();
