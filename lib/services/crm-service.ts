@@ -79,6 +79,8 @@ function getCached<T>(key: string): T | null {
 }
 
 function setCached(key: string, data: any, ttlMs: number = 30000) {
+  // Never cache empty arrays to prevent cache poisoning during auth initialization or race conditions
+  if (Array.isArray(data) && data.length === 0) return;
   crmCache.set(key, { data, expiry: Date.now() + ttlMs });
 }
 
@@ -128,7 +130,7 @@ export const CRMService = {
 
     if (profile) {
       const userProfile = profile as UserProfile;
-      setCached('active_user', userProfile, 20000);
+      setCached('active_user', userProfile, 60000);
       return userProfile;
     }
 
@@ -143,7 +145,7 @@ export const CRMService = {
     };
 
     await supabase.from('profiles').upsert(newProfile);
-    setCached('active_user', newProfile, 20000);
+    setCached('active_user', newProfile, 60000);
     return newProfile;
   },
 
@@ -208,6 +210,10 @@ export const CRMService = {
   getUserOrganizations: async (
     userId: string
   ): Promise<{ organization: Organization; role: MemberRole; status: MemberStatus }[]> => {
+    const cacheKey = `user_orgs_${userId}`;
+    const cached = getCached<{ organization: Organization; role: MemberRole; status: MemberStatus }[]>(cacheKey);
+    if (cached) return cached;
+
     const supabase = createBrowserClient();
 
     // Auto-claim any pending invitations for this user's email on login / check
@@ -265,7 +271,7 @@ export const CRMService = {
     // and Owner-level oversight across every organization in the platform.
     if (cleanEmail && isSuperAdmin(cleanEmail)) {
       try {
-        const { data: allOrgs, error: allOrgsError } = await supabase
+        const { data: allOrgs } = await supabase
           .from('organizations')
           .select('*')
           .order('name', { ascending: true });
@@ -278,32 +284,36 @@ export const CRMService = {
 
           const existingOrgIds = new Set((existingRows || []).map((r: any) => r.organization_id));
 
-          // Auto-link any organizations in DB where Arunkumar doesn't have an approved row yet
-          for (const org of allOrgs) {
-            if (!existingOrgIds.has(org.id)) {
-              try {
-                await supabase.from('organization_members').upsert(
-                  {
-                    organization_id: org.id,
-                    user_id: userId,
-                    role: 'Owner',
-                    status: 'approved',
-                    joined_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                  },
-                  { onConflict: 'user_id,organization_id' }
-                );
-              } catch (e) {
-                // Ignore constraint failure
-              }
+          // Auto-link any organizations in DB where Arunkumar doesn't have an approved row yet (batch in one request)
+          const missingRows = allOrgs
+            .filter((org: any) => !existingOrgIds.has(org.id))
+            .map((org: any) => ({
+              organization_id: org.id,
+              user_id: userId,
+              role: 'Owner' as MemberRole,
+              status: 'approved' as MemberStatus,
+              joined_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }));
+
+          if (missingRows.length > 0) {
+            try {
+              await supabase
+                .from('organization_members')
+                .upsert(missingRows, { onConflict: 'user_id,organization_id' });
+            } catch (e) {
+              // Ignore constraint failure
             }
           }
 
-          return allOrgs.map((org: any) => ({
+          const superAdminResult = allOrgs.map((org: any) => ({
             organization: org as Organization,
             role: 'Owner' as MemberRole,
             status: 'approved' as MemberStatus,
           }));
+
+          setCached(cacheKey, superAdminResult, 45000);
+          return superAdminResult;
         }
       } catch (superAdminErr) {
         console.error('Error in Super Admin multi-org loader:', superAdminErr);
@@ -317,20 +327,24 @@ export const CRMService = {
         status,
         organization:organizations (*)
       `)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true });
 
     if (error || !data) {
       console.error('Error fetching user organizations:', error);
       return [];
     }
 
-    return data
+    const result = data
       .filter((item: any) => item.organization)
       .map((item: any) => ({
         organization: item.organization as Organization,
         role: item.role as MemberRole,
         status: item.status as MemberStatus,
       }));
+
+    setCached(cacheKey, result, 45000);
+    return result;
   },
 
   createOrganization: async (
@@ -714,6 +728,23 @@ export const CRMService = {
       .eq('user_id', userId);
 
     if (error) throw new Error(error.message);
+  },
+
+  deleteOrganization: async (orgId: string): Promise<void> => {
+    // 1. Primary path: Server-side route handler with admin privileges & cascade cleanup
+    const res = await fetch('/api/organizations/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId }),
+    });
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || 'Failed to delete organization workspace.');
+    }
+
+    // Invalidate CRM cache so no stale organization metrics or records linger
+    invalidateCRMCache();
   },
 
   // 4. Join Requests & Discovery

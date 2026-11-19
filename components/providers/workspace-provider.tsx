@@ -37,20 +37,27 @@ interface WorkspaceContextType {
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
 function getStoredActiveOrgId(): string | null {
-  if (typeof document === 'undefined') return null;
-  const match = document.cookie.match(/(?:^|;\s*)active_org_id=([^;]+)/);
-  if (match && match[1]) {
-    return decodeURIComponent(match[1]);
-  }
-  try {
-    const raw = localStorage.getItem('crm_active_organization');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed?.state?.currentOrg?.id) {
-        return parsed.state.currentOrg.id;
+  if (typeof window !== 'undefined') {
+    try {
+      const directId = localStorage.getItem('crm_current_org_id');
+      if (directId) return directId;
+    } catch {}
+    try {
+      const match = document.cookie.match(/(?:^|;\s*)active_org_id=([^;]+)/);
+      if (match && match[1]) {
+        return decodeURIComponent(match[1]);
       }
-    }
-  } catch {}
+    } catch {}
+    try {
+      const raw = localStorage.getItem('crm_active_organization');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.state?.currentOrg?.id) {
+          return parsed.state.currentOrg.id;
+        }
+      }
+    } catch {}
+  }
   return null;
 }
 
@@ -67,8 +74,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     reset,
   } = useOrganizationStore();
 
-  // If currentOrg is already cached in localStorage via persist, don't show loading spinner!
-  const [isLoading, setIsLoading] = useState(!currentOrg);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSwitchingOrg, setIsSwitchingOrg] = useState(false);
   const [switchingOrgName, setSwitchingOrgName] = useState<string | null>(null);
 
@@ -95,26 +102,26 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const approvedMemberships = memberships.filter((m) => m.status === 'approved');
+  const approvedOrgIds = approvedMemberships.map((m) => m.organization.id);
 
-  // If Super Admin has no selection saved, auto-select all organizations
-  useEffect(() => {
-    if (isSuper && approvedMemberships.length > 0 && selectedOrgIds.length === 0) {
-      setSelectedOrgIds(approvedMemberships.map((m) => m.organization.id));
-    }
-  }, [isSuper, approvedMemberships.length, selectedOrgIds.length, setSelectedOrgIds]);
+  // Ensure selectedOrgIds only retain valid org IDs that actually exist in memberships
+  const validSelectedOrgIds =
+    approvedOrgIds.length > 0 && selectedOrgIds.length > 0
+      ? selectedOrgIds.filter((id) => approvedOrgIds.includes(id))
+      : selectedOrgIds;
 
-  const effectiveOrgIds = isSuper
-    ? selectedOrgIds.length > 0
-      ? selectedOrgIds
-      : currentOrg?.id
-      ? [currentOrg.id]
-      : []
+  // Multi-organization mode is ONLY active when the Super Admin explicitly selects multiple organizations
+  // The system must NEVER change or expand the active organization on its own!
+  const isMultiOrgActive = isSuper && validSelectedOrgIds.length > 1;
+  const isAllOrgsSelected = isSuper && approvedMemberships.length > 0 && validSelectedOrgIds.length === approvedMemberships.length;
+
+  const effectiveOrgIds = isMultiOrgActive
+    ? validSelectedOrgIds
     : currentOrg?.id
     ? [currentOrg.id]
+    : approvedOrgIds.length > 0
+    ? [approvedOrgIds[0]]
     : [];
-
-  const isAllOrgsSelected = isSuper && approvedMemberships.length > 0 && selectedOrgIds.length === approvedMemberships.length;
-  const isMultiOrgActive = isSuper && (selectedOrgIds.length > 1 || (selectedOrgIds.length === 1 && selectedOrgIds[0] !== currentOrg?.id));
 
   const toggleOrgSelection = useCallback((orgId: string) => {
     setSelectedOrgIdsState((prev) => {
@@ -152,91 +159,115 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     pathnameRef.current = pathname;
   }, [pathname]);
 
+  const inFlightRefreshRef = useRef<Promise<void> | null>(null);
+
   const refreshWorkspace = useCallback(async (silent: boolean = false, preferredOrgId?: string) => {
-    try {
-      const user = await CRMService.getActiveUser();
-      setCurrentUser(user);
-
-      if (!user) {
-        reset();
-        const currentPath = pathnameRef.current;
-        if (
-          !currentPath.startsWith('/auth') &&
-          currentPath !== '/login' &&
-          currentPath !== '/register' &&
-          !currentPath.startsWith('/invite') &&
-          currentPath !== '/' &&
-          !currentPath.startsWith('/onboarding')
-        ) {
-          router.push('/onboarding');
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      const userMemberships = await CRMService.getUserOrganizations(user.id);
-      setMemberships(userMemberships);
-
-      const approvedMemberships = userMemberships.filter((m) => m.status === 'approved');
-
-      // Preserve the user's currently chosen organization strictly!
-      // Check: 1) preferredOrgId, 2) Zustand store currentOrg, 3) cookie active_org_id, 4) localStorage
-      const activeOrg = useOrganizationStore.getState().currentOrg;
-      const storedOrgId = activeOrg?.id || getStoredActiveOrgId();
-      const targetId = preferredOrgId || storedOrgId;
-
-      let targetMembership = targetId
-        ? approvedMemberships.find((m) => m.organization.id === targetId)
-        : null;
-
-      // If the current organization is pending, keep it without auto-switching away!
-      if (!targetMembership && targetId) {
-        const pending = userMemberships.find((m) => m.organization.id === targetId);
-        if (pending) {
-          targetMembership = pending;
-        }
-      }
-
-      // ONLY if there is NO active organization recorded anywhere (e.g. brand new user login),
-      // pick the first available organization
-      if (!targetMembership && !targetId && approvedMemberships.length > 0) {
-        targetMembership = approvedMemberships[0];
-      }
-
-      if (targetMembership) {
-        const storeOrg = useOrganizationStore.getState().currentOrg;
-        const storeRole = useOrganizationStore.getState().currentRole;
-        const storeStatus = useOrganizationStore.getState().currentStatus;
-
-        // CRUCIAL: Only update if organization details, role, or status have actually changed
-        // Never trigger an organization change or re-render if the user is already in this org!
-        const hasChanged =
-          !storeOrg ||
-          storeOrg.id !== targetMembership.organization.id ||
-          storeRole !== targetMembership.role ||
-          storeStatus !== targetMembership.status ||
-          storeOrg.name !== targetMembership.organization.name ||
-          storeOrg.logo_url !== targetMembership.organization.logo_url;
-
-        if (hasChanged) {
-          setCurrentOrg(targetMembership.organization, targetMembership.role, targetMembership.status);
-        }
-      } else if (userMemberships.length === 0) {
-        const currentPath = pathnameRef.current;
-        if (
-          currentPath !== '/' &&
-          !currentPath.startsWith('/onboarding') &&
-          !currentPath.startsWith('/auth') &&
-          !currentPath.startsWith('/invite')
-        ) {
-          router.push('/onboarding');
-        }
-      }
-    } catch (err) {
-      console.error('Failed to initialize workspace:', err);
-    } finally {
-      setIsLoading(false);
+    if (inFlightRefreshRef.current) {
+      return inFlightRefreshRef.current;
     }
+
+    const refreshPromise = (async () => {
+      try {
+        const user = await CRMService.getActiveUser();
+        setCurrentUser(user);
+
+        if (!user) {
+          reset();
+          const currentPath = pathnameRef.current;
+          if (
+            !currentPath.startsWith('/auth') &&
+            currentPath !== '/login' &&
+            currentPath !== '/register' &&
+            !currentPath.startsWith('/invite') &&
+            currentPath !== '/' &&
+            !currentPath.startsWith('/onboarding')
+          ) {
+            router.push('/onboarding');
+          }
+          setIsLoading(false);
+          return;
+        }
+
+        const userMemberships = await CRMService.getUserOrganizations(user.id);
+        setMemberships(userMemberships);
+
+        const approvedMemberships = userMemberships.filter((m) => m.status === 'approved');
+
+        // Preserve the user's currently chosen organization strictly!
+        // Check: 1) preferredOrgId, 2) Zustand store currentOrg, 3) localStorage / cookie storedOrgId
+        const activeOrg = useOrganizationStore.getState().currentOrg;
+        const storedOrgId = getStoredActiveOrgId();
+        const targetId = preferredOrgId || activeOrg?.id || storedOrgId;
+
+        let targetMembership = targetId
+          ? approvedMemberships.find((m) => m.organization.id === targetId)
+          : null;
+
+        // If the current organization is pending, keep it without auto-switching away!
+        if (!targetMembership && targetId) {
+          const pending = userMemberships.find((m) => m.organization.id === targetId);
+          if (pending) {
+            targetMembership = pending;
+          }
+        }
+
+        // CRITICAL: If the user ALREADY has a chosen organization (in store or storage)
+        // and that organization still exists in memberships, NEVER switch to another organization on its own!
+        // But if that organization no longer exists in any memberships (e.g. deleted), clean it up!
+        if (!targetMembership && (activeOrg?.id || storedOrgId)) {
+          const orgStillExists = userMemberships.some((m) => m.organization.id === (activeOrg?.id || storedOrgId));
+          if (!orgStillExists) {
+            reset();
+          }
+          return;
+        }
+
+        // ONLY if there is NO active organization recorded anywhere (e.g. brand new user login),
+        // pick the first available organization
+        if (!targetMembership && !targetId && approvedMemberships.length > 0) {
+          targetMembership = approvedMemberships[0];
+        }
+
+        if (targetMembership) {
+          const storeOrg = useOrganizationStore.getState().currentOrg;
+          const storeRole = useOrganizationStore.getState().currentRole;
+          const storeStatus = useOrganizationStore.getState().currentStatus;
+
+          // CRUCIAL: Only update if organization details, role, or status have actually changed
+          // Never trigger an organization change or re-render if the user is already in this org!
+          const hasChanged =
+            !storeOrg ||
+            storeOrg.id !== targetMembership.organization.id ||
+            storeRole !== targetMembership.role ||
+            storeStatus !== targetMembership.status ||
+            storeOrg.name !== targetMembership.organization.name ||
+            storeOrg.logo_url !== targetMembership.organization.logo_url;
+
+          if (hasChanged) {
+            setCurrentOrg(targetMembership.organization, targetMembership.role, targetMembership.status);
+          }
+        } else if (userMemberships.length === 0) {
+          const currentPath = pathnameRef.current;
+          if (
+            currentPath !== '/' &&
+            !currentPath.startsWith('/onboarding') &&
+            !currentPath.startsWith('/auth') &&
+            !currentPath.startsWith('/invite')
+          ) {
+            router.push('/onboarding');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to initialize workspace:', err);
+      } finally {
+        inFlightRefreshRef.current = null;
+        setIsInitialized(true);
+        setIsLoading(false);
+      }
+    })();
+
+    inFlightRefreshRef.current = refreshPromise;
+    return refreshPromise;
   }, [router, setCurrentOrg, setMemberships, reset]);
 
   useEffect(() => {
@@ -251,9 +282,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         reset();
         router.push('/auth/login');
       } else if (event === 'SIGNED_IN') {
-        refreshWorkspace(false);
-      } else if (event === 'TOKEN_REFRESHED') {
-        refreshWorkspace(true); // Silent revalidation
+        // Silent revalidation without triggering loading spinners
+        refreshWorkspace(true);
       }
     });
 
@@ -292,6 +322,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     // Instant switch in Zustand store & cookie
     setCurrentOrg(membership.organization, membership.role, membership.status);
 
+    // Focus active multi-org scope strictly on this selected organization
+    setSelectedOrgIds([orgId]);
+
     // Land on the dashboard of the newly chosen organization
     router.push('/dashboard');
 
@@ -316,7 +349,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         currentRole,
         currentStatus,
         memberships,
-        isLoading,
+        isLoading: !isInitialized || isLoading,
         isSwitchingOrg,
         switchingOrgName,
         setCurrentOrg,

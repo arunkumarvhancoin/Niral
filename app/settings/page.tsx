@@ -3,8 +3,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AppShell } from '../../components/layout/app-shell';
 import { useWorkspace } from '../../components/providers/workspace-provider';
+import { useOrganizationStore } from '../../lib/stores/organization-store';
 import { CRMService } from '../../lib/services/crm-service';
-import { hasPermission } from '../../lib/permissions';
+import { hasPermission, isBharatPlay } from '../../lib/permissions';
 import {
   Building2,
   User,
@@ -29,12 +30,21 @@ import { LogoUpload } from '../../components/ui/logo-upload';
 import { toast } from '../../lib/stores/toast-store';
 
 export default function SettingsPage() {
-  const { currentOrg, currentRole, currentStatus, currentUser, refreshWorkspace } = useWorkspace();
+  const {
+    currentOrg,
+    currentRole,
+    currentStatus,
+    currentUser,
+    memberships,
+    switchOrganization,
+    refreshWorkspace,
+    isSuperAdmin: isSuper,
+  } = useWorkspace();
   const router = useRouter();
 
-  const isOrgAdminOrOwner = currentRole === 'Owner' || currentRole === 'Admin';
-  const canEditOrg = hasPermission(currentRole, currentStatus, 'org:settings:update');
-  const canDeleteOrg = hasPermission(currentRole, currentStatus, 'org:delete');
+  const isOrgAdminOrOwner = isSuper || currentRole === 'Owner' || currentRole === 'Admin';
+  const canEditOrg = isSuper || hasPermission(currentRole, currentStatus, 'org:settings:update', currentUser);
+  const canDeleteOrg = (isSuper || hasPermission(currentRole, currentStatus, 'org:delete', currentUser)) && !isBharatPlay(currentOrg);
 
   // Active Tab state ('personal' | 'company')
   const [activeTab, setActiveTab] = useState<'personal' | 'company'>('personal');
@@ -220,25 +230,43 @@ export default function SettingsPage() {
     }
   };
 
-  const handleDeleteOrganization = async () => {
+  // Delete Organization Confirmation Modal State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteInputName, setDeleteInputName] = useState('');
+  const [isDeletingOrg, setIsDeletingOrg] = useState(false);
+
+  const handleOpenDeleteModal = () => {
+    setDeleteInputName('');
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDeleteOrg = async () => {
     if (!currentOrg || !canDeleteOrg) return;
-    const confirmName = prompt(
-      `CAUTION: Deleting this organization will permanently erase all contacts, deals, tasks, and audit logs. Type "${currentOrg.name}" to confirm:`
-    );
-    if (confirmName !== currentOrg.name) {
-      toast.error('Organization name did not match. Deletion cancelled.');
+    if (deleteInputName.trim() !== currentOrg.name) {
+      toast.error('Organization name does not match.');
       return;
     }
 
+    setIsDeletingOrg(true);
     try {
-      if (currentUser) {
-        await CRMService.leaveOrganization(currentOrg.id, currentUser.id);
-      }
-      toast.success('Organization deleted');
-      await refreshWorkspace();
+      const deletedName = currentOrg.name;
+      await CRMService.deleteOrganization(currentOrg.id);
+      setIsDeleteModalOpen(false);
+
+      // Clean store, local storage & cookies for the deleted organization
+      useOrganizationStore.getState().reset();
+
+      // Refresh workspace so memberships update
+      await refreshWorkspace(true);
+
+      toast.success(`Organization "${deletedName}" deleted successfully.`);
+
+      // Once it gets deleted, always take user directly to the Workspace & Discovery page
       router.push('/onboarding');
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete organization');
+    } finally {
+      setIsDeletingOrg(false);
     }
   };
 
@@ -298,7 +326,7 @@ export default function SettingsPage() {
                     Your avatar and display name are visible to team members across workspaces.
                   </p>
                 </div>
-                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#F1F3F7] text-[#697386] border border-[#E7EAF0]">
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-[#F1F3F7] text-[#697386] border border-[#E7EAF0]">
                   Role: {currentRole || 'Member'}
                 </span>
               </div>
@@ -369,7 +397,7 @@ export default function SettingsPage() {
                     <input
                       type="text"
                       required
-                      placeholder="e.g. Arun Kumar"
+                      placeholder="e.g. John Doe"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
                       className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white p-2.5 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
@@ -528,7 +556,7 @@ export default function SettingsPage() {
                     </p>
                   </div>
                 </div>
-                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#F0F4FE] text-[#3659C9] border border-[#3659C9]/20">
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-[#F0F4FE] text-[#3659C9] border border-[#3659C9]/20">
                   {currentRole} Access
                 </span>
               </div>
@@ -667,8 +695,8 @@ export default function SettingsPage() {
                 </p>
                 <button
                   type="button"
-                  onClick={handleDeleteOrganization}
-                  className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-[13px] font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-md shadow-xs transition-colors"
+                  onClick={handleOpenDeleteModal}
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-[13px] font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-md shadow-xs transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Delete Organization Workspace</span>
@@ -697,6 +725,105 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+
+      {/* Delete Organization UI Modal Box */}
+      {isDeleteModalOpen && currentOrg && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => {
+            if (!isDeletingOrg) setIsDeleteModalOpen(false);
+          }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.18)] border border-[#E7EAF0] max-w-md w-full p-5 sm:p-6 space-y-4 animate-in zoom-in-95 duration-150"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header: Danger badge & Title */}
+            <div className="flex items-start justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-lg bg-[#FEF2F2] border border-[#FECACA] flex items-center justify-center text-[#B91C1C] flex-shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-[#171B26] leading-snug">
+                    Delete Organization Workspace
+                  </h3>
+                  <p className="text-[12px] text-[#697386] mt-0.5">
+                    This action is destructive and irreversible.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={isDeletingOrg}
+                className="text-[#697386] hover:text-[#171B26] p-1 rounded-md transition-colors disabled:opacity-40 cursor-pointer"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Warning Message Card */}
+            <div className="bg-[#FEF2F2]/60 rounded-lg border border-[#FECACA]/70 p-3 text-[12px] text-[#991B1B] leading-relaxed space-y-1.5">
+              <p className="font-semibold">
+                You are about to permanently delete <span className="underline">{currentOrg.name}</span>.
+              </p>
+              <p className="text-[11px] text-[#B91C1C]">
+                All associated contacts, leads, opportunity deals, sales pipelines, assigned tasks, and member access permissions will be permanently removed.
+              </p>
+            </div>
+
+            {/* Input Confirmation Field */}
+            <div className="space-y-1.5">
+              <label className="block text-[12px] font-medium text-[#171B26]">
+                To verify, type <span className="font-semibold text-[#B91C1C] select-all font-mono">{currentOrg.name}</span> below:
+              </label>
+              <input
+                type="text"
+                value={deleteInputName}
+                onChange={(e) => setDeleteInputName(e.target.value)}
+                placeholder={currentOrg.name}
+                disabled={isDeletingOrg}
+                autoFocus
+                className="w-full px-3 py-2 text-[13px] rounded-lg border border-[#E7EAF0] bg-[#F7F8FA] focus:bg-white text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] transition-all font-mono"
+              />
+            </div>
+
+            {/* Buttons Footer */}
+            <div className="flex items-center justify-end space-x-2 pt-3 border-t border-[#E7EAF0]">
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={isDeletingOrg}
+                className="px-3.5 py-2 text-[13px] font-medium text-[#171B26] hover:bg-[#F1F3F7] rounded-lg border border-[#E7EAF0] transition-colors disabled:opacity-40 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteOrg}
+                disabled={isDeletingOrg || deleteInputName.trim() !== currentOrg.name}
+                className="inline-flex items-center justify-center space-x-1.5 px-4 py-2 text-[13px] font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] active:bg-[#7F1D1D] rounded-lg shadow-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {isDeletingOrg ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting Workspace...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Organization</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

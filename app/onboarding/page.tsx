@@ -24,7 +24,7 @@ import {
   User,
   Lock,
   UserPlus,
-  Sparkles,
+  ShieldCheck,
   Copy,
   Check,
   Trash2,
@@ -36,6 +36,7 @@ import { toast } from '../../lib/stores/toast-store';
 function OnboardingContent() {
   const {
     currentUser,
+    currentOrg,
     memberships,
     setCurrentOrg,
     refreshWorkspace,
@@ -45,9 +46,31 @@ function OnboardingContent() {
   } = useWorkspace();
 
   const searchParams = useSearchParams();
+  const fromParam = searchParams.get('from');
   const initialMode = searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
   const initialStep = (searchParams.get('step') as 'select' | 'create') || 'select';
   const queryEmail = searchParams.get('email') || '';
+
+  // Navigation: Go back to previous location, active org dashboard, or landing page
+  const handleBack = () => {
+    // 1. If explicit "from" was provided in the URL:
+    if (fromParam) {
+      router.push(fromParam);
+      return;
+    }
+    // 2. If user has in-site history:
+    if (typeof window !== 'undefined' && window.history.length > 1 && document.referrer && document.referrer.includes(window.location.host)) {
+      router.back();
+      return;
+    }
+    // 3. Fallback: If user has an active organization, go to its dashboard:
+    if (currentOrg) {
+      router.push('/dashboard');
+      return;
+    }
+    // 4. Default fallback: landing page:
+    router.push('/');
+  };
 
   // Auth Form State (when user is not yet logged in)
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>(initialMode);
@@ -202,7 +225,7 @@ function OnboardingContent() {
     );
   });
 
-  // Handle In-Place Authentication (Production-Grade with API Route + Client Fallback)
+  // Handle In-Place Authentication (Production-Grade with API Route + Client Fallback & Auto-Retry)
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsAuthSubmitting(true);
@@ -212,38 +235,54 @@ function OnboardingContent() {
     const endpoint = authMode === 'signin' ? '/api/auth/signin' : '/api/auth/signup';
 
     try {
-      // 1. Primary path: Server-side API route handler (bypasses browser adblockers, ISP DNS blocks & cross-origin issues)
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: cleanEmail,
-          password: authPassword,
-          fullName: authFullName.trim(),
-        }),
-      });
-
-      const result = await res.json();
-
-      if (!res.ok) {
-        // If it is a 4xx validation or credential error, display it directly
-        setAuthError(result.error || 'Authentication failed. Please verify your credentials.');
-        return;
+      // 1. Primary path: Server-side API route handler (bypasses browser adblockers & cross-origin issues)
+      let res: Response;
+      try {
+        res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanEmail,
+            password: authPassword,
+            fullName: authFullName.trim(),
+          }),
+        });
+      } catch (networkFetchErr) {
+        // If client-to-server fetch failed, bubble to client fallback
+        throw networkFetchErr;
       }
 
-      // Synchronize browser client session if token returned
+      const result = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        // If it is a 4xx validation or wrong credentials error, display user-friendly message
+        if (res.status === 400 || res.status === 401 || res.status === 422) {
+          setAuthError(result.error || 'Authentication failed. Please verify your credentials.');
+          return;
+        }
+
+        // If it was a 5xx server timeout or fetch failure, bubble to client fallback!
+        console.warn('Server auth returned 5xx, falling back to direct browser auth:', result.error);
+        throw new Error(result.error || 'Server connection error');
+      }
+
+      // Synchronize browser client session if token returned (non-fatal if cookies already present)
       const supabase = createClient();
       if (result.session) {
-        await supabase.auth.setSession({
-          access_token: result.session.access_token,
-          refresh_token: result.session.refresh_token,
-        });
+        try {
+          await supabase.auth.setSession({
+            access_token: result.session.access_token,
+            refresh_token: result.session.refresh_token,
+          });
+        } catch (sessionSyncErr) {
+          console.warn('Session sync notice (cookies already established):', sessionSyncErr);
+        }
       }
 
       toast.success(authMode === 'signin' ? 'Signed in successfully!' : 'Account created successfully!');
       await refreshWorkspace(false);
     } catch (primaryErr: any) {
-      console.warn('Primary server auth notice:', primaryErr.message);
+      console.warn('Primary server auth failed, executing browser client fallback:', primaryErr.message);
 
       // 2. Fallback path: Direct browser client call
       try {
@@ -270,7 +309,15 @@ function OnboardingContent() {
         toast.success(authMode === 'signin' ? 'Signed in successfully!' : 'Account created successfully!');
         await refreshWorkspace(false);
       } catch (fallbackErr: any) {
-        const msg = primaryErr.message || fallbackErr.message || 'Authentication failed. Please verify your credentials.';
+        const raw = (fallbackErr?.message || primaryErr?.message || '').toLowerCase();
+        let msg = 'Authentication failed. Please verify your credentials.';
+        if (raw.includes('fetch failed') || raw.includes('failed to fetch') || raw.includes('network') || raw.includes('timeout')) {
+          msg = 'Connection to authentication server timed out. Please check your internet connection and try again.';
+        } else if (raw.includes('invalid login credentials') || raw.includes('invalid credentials')) {
+          msg = 'Incorrect email or password. Please verify your credentials.';
+        } else if (fallbackErr?.message) {
+          msg = fallbackErr.message;
+        }
         setAuthError(msg);
       }
     } finally {
@@ -327,13 +374,15 @@ function OnboardingContent() {
         {/* Top: Header & Navigation */}
         <div className="relative z-10 space-y-4">
           <div className="flex items-center justify-between">
-            <Link
-              href="/"
-              className="inline-flex items-center space-x-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center space-x-1.5 text-xs text-slate-400 hover:text-white transition-colors cursor-pointer group"
+              title={currentOrg ? `Back to ${currentOrg.name}` : fromParam === '/' ? 'Back to Landing Page' : 'Back'}
             >
-              <ChevronLeft className="w-3.5 h-3.5" />
-              <span>Back</span>
-            </Link>
+              <ChevronLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+              <span>{currentOrg ? `Back to ${currentOrg.name}` : 'Back'}</span>
+            </button>
           </div>
 
           <Link href="/" className="flex items-center space-x-3 pt-2 group cursor-pointer inline-flex">
@@ -460,7 +509,7 @@ function OnboardingContent() {
                       <input
                         type="text"
                         required
-                        placeholder="e.g. Arun Kumar"
+                        placeholder="e.g. John Doe"
                         value={authFullName}
                         onChange={(e) => setAuthFullName(e.target.value)}
                         className="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-[#BAC0CE] focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] focus:outline-none transition-all"
@@ -534,15 +583,28 @@ function OnboardingContent() {
                     <span className="text-[10px] text-[#697386]">Niral Identity Active</span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => signOut()}
-                  className="inline-flex items-center space-x-1 text-[11px] text-[#697386] hover:text-[#B91C1C] transition-colors"
-                  title="Switch or sign out account"
-                >
-                  <LogOut className="w-3 h-3" />
-                  <span>Sign Out</span>
-                </button>
+                <div className="flex items-center space-x-2">
+                  {currentOrg && (
+                    <button
+                      type="button"
+                      onClick={handleBack}
+                      className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] font-medium text-[#3659C9] bg-[#F0F4FE] hover:bg-[#E2EAFA] border border-[#C7D6F5] rounded-md transition-colors cursor-pointer"
+                      title={`Return to ${currentOrg.name}`}
+                    >
+                      <ChevronLeft className="w-3 h-3" />
+                      <span>Back to {currentOrg.name}</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => signOut()}
+                    className="inline-flex items-center space-x-1 text-[11px] text-[#697386] hover:text-[#B91C1C] transition-colors"
+                    title="Switch or sign out account"
+                  >
+                    <LogOut className="w-3 h-3" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
               </div>
 
               {/* STEP 2A: SELECT JOINED WORKSPACE */}
@@ -644,7 +706,7 @@ function OnboardingContent() {
                                     {item.organization.name}
                                   </h3>
                                   <span
-                                    className={`text-[9px] font-semibold px-1.5 py-0.2 rounded-full border flex-shrink-0 ${
+                                    className={`text-[9px] font-semibold px-1.5 py-0.2 rounded border flex-shrink-0 ${
                                       item.role === 'Owner'
                                         ? 'bg-purple-50 text-purple-700 border-purple-200'
                                         : item.role === 'Admin'
@@ -688,7 +750,7 @@ function OnboardingContent() {
                       <div>
                         {hasOrgInvite && (
                           <div className="mb-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center space-x-2">
-                            <Sparkles className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                            <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                             <span>
                               <strong>Super Admin Invitation Active:</strong> You are authorized to create a new organization workspace.
                             </span>

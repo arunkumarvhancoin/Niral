@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWorkspace } from '../providers/workspace-provider';
 import { Sidebar } from './sidebar';
 import { Header } from './header';

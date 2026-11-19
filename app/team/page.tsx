@@ -14,6 +14,7 @@ import {
 import { hasPermission, isOrgAdmin } from '../../lib/permissions';
 import { toast } from '../../lib/stores/toast-store';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
+import { TableSkeleton } from '../../components/ui/skeleton';
 import {
   Users,
   UserPlus,
@@ -49,6 +50,7 @@ export default function TeamPage() {
     isSuperAdmin: isSuper,
     isMultiOrgActive,
     memberships,
+    isLoading: isWorkspaceLoading,
   } = useWorkspace();
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [invitations, setInvitations] = useState<OrganizationInvitation[]>([]);
@@ -85,33 +87,34 @@ export default function TeamPage() {
   const orgIdsKey = effectiveOrgIds.join(',');
 
   const loadTeamData = useCallback(async () => {
-    if (effectiveOrgIds.length === 0) return;
+    if (isWorkspaceLoading || effectiveOrgIds.length === 0) return;
     setIsLoading(true);
     try {
-      const memberList = await CRMService.getOrganizationMembers(effectiveOrgIds);
-      setMembers(memberList);
-
       const targetOrgIds = effectiveOrgIds.length > 0 ? effectiveOrgIds : (currentOrg ? [currentOrg.id] : []);
-      const invList = await CRMService.getOrganizationInvitations(targetOrgIds, isSuper);
+      const [memberList, invList] = await Promise.all([
+        CRMService.getOrganizationMembers(effectiveOrgIds),
+        CRMService.getOrganizationInvitations(targetOrgIds, isSuper),
+      ]);
+      setMembers(memberList);
       setInvitations(invList);
     } catch (err) {
       console.error(err);
     } finally {
       setIsLoading(false);
     }
-  }, [orgIdsKey, currentOrg?.id, effectiveOrgIds, isSuper]);
+  }, [isWorkspaceLoading, orgIdsKey, currentOrg?.id, effectiveOrgIds, isSuper]);
 
   useEffect(() => {
-    if (!isLoading && currentRole && !isAuthorized) {
+    if (!isWorkspaceLoading && currentRole && !isAuthorized) {
       router.replace('/dashboard');
     }
-  }, [currentRole, isLoading, isAuthorized, router]);
+  }, [currentRole, isWorkspaceLoading, isAuthorized, router]);
 
   useEffect(() => {
-    if (effectiveOrgIds.length > 0 && isAuthorized) {
+    if (!isWorkspaceLoading && effectiveOrgIds.length > 0 && isAuthorized) {
       loadTeamData();
     }
-  }, [orgIdsKey, isAuthorized, loadTeamData]);
+  }, [isWorkspaceLoading, orgIdsKey, isAuthorized, loadTeamData]);
 
   const [confirmState, setConfirmState] = useState<{
     isOpen: boolean;
@@ -370,21 +373,37 @@ export default function TeamPage() {
         {/* TAB 1: MEMBERS */}
         {activeTab === 'members' && (
           <div className="bg-white rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] overflow-hidden">
-            <table className="w-full text-left text-[13px]">
-              <thead className="bg-[#F7F8FA] border-b border-[#E7EAF0] text-[#697386] font-medium uppercase tracking-wider text-[11px]">
-                <tr>
-                  <th className="py-2.5 px-4">Member Name & Account</th>
-                  {(isSuper || isMultiOrgActive || effectiveOrgIds.length > 1) && (
-                    <th className="py-2.5 px-4">Organization</th>
-                  )}
-                  <th className="py-2.5 px-4">Organization Role</th>
-                  <th className="py-2.5 px-4">Membership Status</th>
-                  <th className="py-2.5 px-4">Joined Date</th>
-                  <th className="py-2.5 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E7EAF0]">
-                {members.map((member) => {
+            <div className="inner-table-container">
+              <table className="w-full text-left text-[13px]">
+                <thead className="sticky-table-header text-[#697386] font-medium uppercase tracking-wider text-[11px]">
+                  <tr>
+                    <th className="py-2.5 px-4">Member Name & Account</th>
+                    {(isSuper || isMultiOrgActive || effectiveOrgIds.length > 1) && (
+                      <th className="py-2.5 px-4">Organization</th>
+                    )}
+                    <th className="py-2.5 px-4">Organization Role</th>
+                    <th className="py-2.5 px-4">Membership Status</th>
+                    <th className="py-2.5 px-4">Joined Date</th>
+                    <th className="py-2.5 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E7EAF0]">
+                  {isWorkspaceLoading || isLoading ? (
+                    <TableSkeleton
+                      columns={(isSuper || isMultiOrgActive || effectiveOrgIds.length > 1) ? 6 : 5}
+                      rows={5}
+                    />
+                  ) : members.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={(isSuper || isMultiOrgActive || effectiveOrgIds.length > 1) ? 6 : 5}
+                        className="py-12 text-center text-[#697386]"
+                      >
+                        No active members found.
+                      </td>
+                    </tr>
+                  ) : (
+                    members.map((member) => {
                   const isSelf = member.user_id === currentUser?.id;
                   const memberOrgId = member.organization_id || currentOrg?.id;
                   return (
@@ -437,7 +456,7 @@ export default function TeamPage() {
                             <option value="Viewer">Viewer</option>
                           </select>
                         ) : (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${
                             member.role === 'Owner'
                               ? 'bg-[#F5F3FF] text-[#5B21B6] border-[#5B21B6]/20'
                               : member.role === 'Admin'
@@ -454,12 +473,18 @@ export default function TeamPage() {
                       </td>
 
                       <td className="py-3 px-4">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider ${member.status === 'approved'
-                            ? 'bg-[#ECFDF5] text-[#047857] border border-[#047857]/20'
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border capitalize ${member.status === 'approved'
+                            ? 'bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]'
                             : member.status === 'pending'
-                              ? 'bg-[#FFFBEB] text-[#B45309] border border-[#B45309]/20'
-                              : 'bg-[#FEF2F2] text-[#B91C1C] border border-[#B91C1C]/20'
+                              ? 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]'
+                              : 'bg-[#FEF2F2] text-[#B91C1C] border-[#FECACA]'
                           }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${member.status === 'approved'
+                            ? 'bg-[#047857]'
+                            : member.status === 'pending'
+                              ? 'bg-[#B45309]'
+                              : 'bg-[#B91C1C]'
+                          }`} />
                           {member.status}
                         </span>
                       </td>
@@ -498,26 +523,20 @@ export default function TeamPage() {
                       </td>
                     </tr>
                   );
-                })}
-              </tbody>
+                })
+              )}
+            </tbody>
             </table>
           </div>
+        </div>
         )}
 
         {/* TAB 2: PENDING SIGN-UPS */}
         {activeTab === 'invitations' && (
           <div className="bg-white rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] overflow-hidden">
-            {invitations.length === 0 ? (
-              <div className="py-12 text-center">
-                <Mail className="w-8 h-8 text-[#9AA2B1] mx-auto mb-2" />
-                <p className="text-[13px] font-medium text-[#171B26]">No pending sign-ups</p>
-                <p className="text-[12px] text-[#697386] mt-1">
-                  When you add colleagues who haven&apos;t signed up yet, they will appear here until they log in.
-                </p>
-              </div>
-            ) : (
+            <div className="inner-table-container">
               <table className="w-full text-left text-[13px]">
-                <thead className="bg-[#F7F8FA] border-b border-[#E7EAF0] text-[#697386] font-medium uppercase tracking-wider text-[11px]">
+                <thead className="sticky-table-header text-[#697386] font-medium uppercase tracking-wider text-[11px]">
                   <tr>
                     <th className="py-2.5 px-4">Email</th>
                     <th className="py-2.5 px-4">Workspace</th>
@@ -529,7 +548,20 @@ export default function TeamPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E7EAF0]">
-                  {invitations.map((inv) => {
+                  {isWorkspaceLoading || isLoading ? (
+                    <TableSkeleton columns={7} rows={4} showAvatar={false} />
+                  ) : invitations.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center">
+                        <Mail className="w-8 h-8 text-[#9AA2B1] mx-auto mb-2" />
+                        <p className="text-[13px] font-medium text-[#171B26]">No pending sign-ups</p>
+                        <p className="text-[12px] text-[#697386] mt-1">
+                          When you add colleagues who haven&apos;t signed up yet, they will appear here until they log in.
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    invitations.map((inv) => {
                     const inviteUrl = `${window.location.origin}/onboarding?mode=signup&email=${encodeURIComponent(inv.email)}`;
                     return (
                       <tr key={inv.id} className="hover:bg-[#F7F8FA] transition-colors">
@@ -552,7 +584,7 @@ export default function TeamPage() {
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#FFFBEB] text-[#B45309] border border-[#B45309]/20">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#FFFBEB] text-[#B45309] border border-[#B45309]/20">
                             Auto-joins on sign-up / login
                           </span>
                         </td>
@@ -612,10 +644,11 @@ export default function TeamPage() {
                         </td>
                       </tr>
                     );
-                  })}
-                </tbody>
+                  })
+                )}
+              </tbody>
               </table>
-            )}
+            </div>
           </div>
         )}
 

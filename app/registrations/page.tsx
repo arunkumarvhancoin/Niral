@@ -9,6 +9,7 @@ import { parseNumericValue } from '../../lib/services/crm-service';
 import { Lead } from '../../lib/types/crm';
 import { toast } from '../../lib/stores/toast-store';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
+import { TableSkeleton } from '../../components/ui/skeleton';
 import { isBharatPlay } from '../../lib/permissions';
 import {
   Search,
@@ -64,9 +65,10 @@ export default function RegistrationsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const router = useRouter();
-  const { currentOrg, currentRole, currentStatus } = useWorkspace();
+  const { currentOrg, currentRole, currentStatus, isLoading: isWorkspaceLoading } = useWorkspace();
 
   const loadRegistrations = useCallback(async () => {
+    if (isWorkspaceLoading) return;
     if (!currentOrg?.id || !isBharatPlay(currentOrg)) {
       setIsLoading(false);
       return;
@@ -109,11 +111,15 @@ export default function RegistrationsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentOrg?.id]);
+  }, [currentOrg?.id, isWorkspaceLoading]);
 
   useEffect(() => {
-    loadRegistrations();
-  }, [loadRegistrations]);
+    if (!isWorkspaceLoading && currentOrg?.id && isBharatPlay(currentOrg)) {
+      loadRegistrations();
+    }
+  }, [isWorkspaceLoading, currentOrg?.id, loadRegistrations]);
+
+  const isTableLoading = isWorkspaceLoading || isLoading;
 
   // Helper to extract slot and member info from lead title
   const parseLeadDetails = (title: string) => {
@@ -362,11 +368,11 @@ export default function RegistrationsPage() {
             </button>
             <button
               onClick={loadRegistrations}
-              disabled={isLoading}
+              disabled={isTableLoading}
               className="flex-1 sm:flex-none inline-flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-md bg-[#3659C9] hover:bg-[#2B47A1] text-white text-[13px] font-medium transition-colors disabled:opacity-50 shadow-xs"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>{isLoading ? 'Refreshing...' : 'Refresh'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isTableLoading ? 'animate-spin' : ''}`} />
+              <span>{isTableLoading ? 'Refreshing...' : 'Refresh'}</span>
             </button>
           </div>
         </div>
@@ -375,21 +381,33 @@ export default function RegistrationsPage() {
         <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <div className="bg-white p-3.5 rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
             <p className="text-[11px] font-medium text-[#697386] uppercase tracking-wider truncate">Total Bookings</p>
-            <p className="text-xl font-semibold text-[#171B26] mt-1 tabular-nums">{totalRegistrations}</p>
+            {isTableLoading ? (
+              <div className="h-6 w-12 bg-slate-200/80 rounded animate-pulse mt-1" />
+            ) : (
+              <p className="text-xl font-semibold text-[#171B26] mt-1 tabular-nums">{totalRegistrations}</p>
+            )}
           </div>
 
           <div className="bg-white p-3.5 rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
             <p className="text-[11px] font-medium text-[#697386] uppercase tracking-wider truncate">Reserved Seats</p>
-            <p className="text-xl font-semibold text-[#171B26] mt-1 tabular-nums">
-              {totalAttendees} <span className="text-[12px] font-normal text-[#697386] hidden sm:inline">Attendees</span>
-            </p>
+            {isTableLoading ? (
+              <div className="h-6 w-12 bg-slate-200/80 rounded animate-pulse mt-1" />
+            ) : (
+              <p className="text-xl font-semibold text-[#171B26] mt-1 tabular-nums">
+                {totalAttendees} <span className="text-[12px] font-normal text-[#697386] hidden sm:inline">Attendees</span>
+              </p>
+            )}
           </div>
 
           <div className="bg-white p-3.5 rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
             <p className="text-[11px] font-medium text-[#697386] uppercase tracking-wider truncate">Total Revenue</p>
-            <p className="text-xl font-semibold text-[#171B26] mt-1 truncate tabular-nums">
-              ₹{totalPayableRupees.toLocaleString('en-IN')}
-            </p>
+            {isTableLoading ? (
+              <div className="h-6 w-16 bg-slate-200/80 rounded animate-pulse mt-1" />
+            ) : (
+              <p className="text-xl font-semibold text-[#171B26] mt-1 truncate tabular-nums">
+                ₹{totalPayableRupees.toLocaleString('en-IN')}
+              </p>
+            )}
           </div>
         </div>
 
@@ -441,7 +459,7 @@ export default function RegistrationsPage() {
         {/* MOBILE VIEW: High-Craft Registration Cards (Visible on screens < 768px) */}
         {/* =================================================================== */}
         <div className="block md:hidden space-y-3">
-          {isLoading ? (
+          {isTableLoading ? (
             <div className="py-12 text-center text-slate-400 text-sm bg-white rounded-xl border border-slate-200/90">
               Loading registrations...
             </div>
@@ -503,7 +521,7 @@ export default function RegistrationsPage() {
                           {members}
                         </span>
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${paymentInfo.badgeClass}`}
+                          className={`px-2 py-0.5 rounded text-[11px] font-medium border ${paymentInfo.badgeClass}`}
                         >
                           {paymentInfo.label}
                         </span>
@@ -585,12 +603,11 @@ export default function RegistrationsPage() {
         </div>
 
         {/* =================================================================== */}
-        {/* DESKTOP VIEW: Read-Only Table (Visible on screens >= 768px)          */}
-        {/* =================================================================== */}
+        {/* DESKTOP VIEW: Read-Only Table with Inner Scroll & Sticky Header (Visible on screens >= 768px) */}
         <div className="hidden md:block bg-white rounded-lg border border-[#E7EAF0] overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-          <div className="overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="inner-table-container">
             <table className="w-full text-left text-[13px]">
-              <thead className="bg-[#F7F8FA] border-b border-[#E7EAF0] text-[#697386] font-medium text-[11px] uppercase tracking-wider">
+              <thead className="sticky-table-header text-[#697386] font-medium text-[11px] uppercase tracking-wider">
                 <tr>
                   <th className="py-2.5 px-4">Attendee Name</th>
                   <th className="py-2.5 px-4">Email ID</th>
@@ -603,12 +620,8 @@ export default function RegistrationsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E7EAF0]">
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={8} className="py-12 text-center text-[#697386] text-[13px]">
-                      Loading registrations...
-                    </td>
-                  </tr>
+                {isTableLoading ? (
+                  <TableSkeleton columns={8} rows={6} showAvatar={false} />
                 ) : filteredRegistrations.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-14 text-center text-[#697386]">
@@ -669,7 +682,7 @@ export default function RegistrationsPage() {
                         {/* Payment Status Column */}
                         <td className="py-2.5 px-4 whitespace-nowrap">
                           <span
-                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium border ${paymentInfo.badgeClass}`}
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium border ${paymentInfo.badgeClass}`}
                           >
                             <span className={`w-1.5 h-1.5 rounded-full ${paymentInfo.dotClass}`} />
                             {paymentInfo.label}
@@ -862,7 +875,7 @@ export default function RegistrationsPage() {
 
                     <div>
                       <span className="text-[11px] font-medium text-[#697386] uppercase tracking-wider block">Payment Status</span>
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium border mt-1 ${paymentInfo.badgeClass}`}>
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium border mt-1 ${paymentInfo.badgeClass}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${paymentInfo.dotClass}`} />
                         {paymentInfo.label}
                       </span>

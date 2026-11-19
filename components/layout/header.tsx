@@ -16,7 +16,7 @@ import {
   Building2,
   ChevronDown,
   Filter,
-  Sparkles,
+  Layers,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -97,7 +97,7 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
             <button
               onClick={() => setShowHeaderOrgMenu(!showHeaderOrgMenu)}
               className={`inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border transition-colors ${
-                isMultiOrgActive || isAllOrgsSelected
+                isMultiOrgActive
                   ? 'bg-[#F0F4FE] text-[#3659C9] border-[#C7D6F5] hover:bg-[#E2EAFA]'
                   : 'bg-[#F7F8FA] text-[#171B26] border-[#E7EAF0] hover:bg-[#F1F3F7]'
               }`}
@@ -105,11 +105,13 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
             >
               <Shield className="w-3.5 h-3.5 text-[#3659C9] flex-shrink-0" />
               <span className="hidden sm:inline">
-                {isAllOrgsSelected
-                  ? `All Orgs (${memberships.length})`
-                  : `${effectiveOrgIds.length} Orgs`}
+                {isMultiOrgActive
+                  ? isAllOrgsSelected
+                    ? `All Orgs (${memberships.length})`
+                    : `${effectiveOrgIds.length} Orgs`
+                  : currentOrg?.name || 'Workspace'}
               </span>
-              <span className="sm:hidden">{effectiveOrgIds.length} Orgs</span>
+              <span className="sm:hidden">{isMultiOrgActive ? `${effectiveOrgIds.length} Orgs` : currentOrg?.name || 'Workspace'}</span>
               <ChevronDown className="w-3 h-3 text-[#697386]" />
             </button>
 
@@ -224,7 +226,7 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
                 </Link>
               )}
               <Link
-                href="/onboarding"
+                href={`/onboarding?from=${encodeURIComponent(pathname)}`}
                 onClick={() => setShowUserMenu(false)}
                 className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs text-[#171B26] hover:bg-[#F1F3F7] transition-colors"
               >
@@ -236,7 +238,7 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
                 onClick={() => setShowUserMenu(false)}
                 className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs font-medium text-[#3659C9] hover:bg-blue-50 transition-colors"
               >
-                <Sparkles className="w-3.5 h-3.5 text-[#3659C9]" />
+                <Layers className="w-3.5 h-3.5 text-[#3659C9]" />
                 <span>Niral Suite & Other Services</span>
               </Link>
               <div className="border-t border-[#E7EAF0] my-1" />

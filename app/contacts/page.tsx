@@ -8,6 +8,7 @@ import { Contact, Lead } from '../../lib/types/crm';
 import { hasPermission } from '../../lib/permissions';
 import { toast } from '../../lib/stores/toast-store';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
+import { TableSkeleton } from '../../components/ui/skeleton';
 import {
   Users2,
   Plus,
@@ -24,7 +25,7 @@ import {
   Check,
   Target,
   ArrowRight,
-  Sparkles,
+  Briefcase,
   ShieldCheck,
   UserCheck,
   CheckSquare,
@@ -43,19 +44,29 @@ export default function ContactsPage() {
     isAllOrgsSelected,
     isMultiOrgActive,
     memberships,
+    isLoading: isWorkspaceLoading,
   } = useWorkspace();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [orgFilter, setOrgFilter] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
 
+  // Debounce search query to prevent hammering Supabase on every keystroke
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [search]);
+
   // Sync org filter if currentOrg changes
   useEffect(() => {
-    if (!isSuper && currentOrg?.id) {
+    if (currentOrg?.id) {
       setOrgFilter(currentOrg.id);
     }
-  }, [currentOrg?.id, isSuper]);
+  }, [currentOrg?.id]);
 
   const effectiveOrgIds =
     orgFilter !== 'all'
@@ -86,6 +97,16 @@ export default function ContactsPage() {
     lead_priority: 'Medium' as Lead['priority'],
   });
 
+  // Sync formData organization_id when currentOrg changes
+  useEffect(() => {
+    if (currentOrg?.id) {
+      setFormData((prev) => ({
+        ...prev,
+        organization_id: currentOrg.id,
+      }));
+    }
+  }, [currentOrg?.id]);
+
   // Contact Details Pop-up state
   const [viewingContact, setViewingContact] = useState<Contact | null>(null);
 
@@ -103,29 +124,28 @@ export default function ContactsPage() {
   const orgIdsKey = effectiveOrgIds.join(',');
 
   const loadContacts = useCallback(async () => {
+    if (isWorkspaceLoading) return;
     if (effectiveOrgIds.length === 0) {
       setContacts([]);
       setIsLoading(false);
       return;
     }
-    if (contacts.length === 0) {
-      setIsLoading(true);
-    }
+    setIsLoading(true);
     try {
-      const data = await CRMService.getContacts(effectiveOrgIds, search, statusFilter);
+      const data = await CRMService.getContacts(effectiveOrgIds, debouncedSearch, statusFilter);
       setContacts(data);
     } catch (err) {
       console.error(err);
     } finally {
       setIsLoading(false);
     }
-  }, [orgIdsKey, search, statusFilter, contacts.length]);
+  }, [isWorkspaceLoading, orgIdsKey, debouncedSearch, statusFilter]);
 
   useEffect(() => {
-    if (effectiveOrgIds.length > 0) {
+    if (!isWorkspaceLoading && effectiveOrgIds.length > 0) {
       loadContacts();
     }
-  }, [orgIdsKey, loadContacts]);
+  }, [isWorkspaceLoading, orgIdsKey, loadContacts]);
 
   const handleOpenCreate = () => {
     setEditingContact(null);
@@ -352,7 +372,11 @@ export default function ContactsPage() {
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total Directory</p>
-              <p className="text-2xl font-bold text-slate-900 tabular-nums">{contacts.length}</p>
+              {isWorkspaceLoading || isLoading ? (
+                <div className="h-7 w-14 bg-slate-200/80 rounded animate-pulse mt-1" />
+              ) : (
+                <p className="text-2xl font-bold text-slate-900 tabular-nums">{contacts.length}</p>
+              )}
             </div>
           </div>
 
@@ -362,7 +386,11 @@ export default function ContactsPage() {
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Active Customers</p>
-              <p className="text-2xl font-bold text-emerald-600 tabular-nums">{customerCount}</p>
+              {isWorkspaceLoading || isLoading ? (
+                <div className="h-7 w-14 bg-slate-200/80 rounded animate-pulse mt-1" />
+              ) : (
+                <p className="text-2xl font-bold text-emerald-600 tabular-nums">{customerCount}</p>
+              )}
             </div>
           </div>
 
@@ -372,22 +400,30 @@ export default function ContactsPage() {
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Prospect Leads</p>
-              <p className="text-2xl font-bold text-amber-600 tabular-nums">{leadCount}</p>
+              {isWorkspaceLoading || isLoading ? (
+                <div className="h-7 w-14 bg-slate-200/80 rounded animate-pulse mt-1" />
+              ) : (
+                <p className="text-2xl font-bold text-amber-600 tabular-nums">{leadCount}</p>
+              )}
             </div>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-purple-100/90 shadow-xs hover:border-purple-300 transition-all flex items-center space-x-3.5">
             <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 border border-purple-200/70 flex items-center justify-center flex-shrink-0">
-              <Sparkles className="w-5 h-5" />
+              <Briefcase className="w-5 h-5" />
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Partners & Affiliates</p>
-              <p className="text-2xl font-bold text-purple-700 tabular-nums">{partnerCount}</p>
+              {isWorkspaceLoading || isLoading ? (
+                <div className="h-7 w-14 bg-slate-200/80 rounded animate-pulse mt-1" />
+              ) : (
+                <p className="text-2xl font-bold text-purple-700 tabular-nums">{partnerCount}</p>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Filter Bar with Search, Organization Filter, and Quick Pills */}
+        {/* Filter Bar with Search, Organization Filter, and Segmented Status Control */}
         <div className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1">
             <div className="relative w-full sm:w-72">
@@ -422,50 +458,46 @@ export default function ContactsPage() {
             )}
           </div>
 
-          <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 md:pb-0">
+          <div className="flex items-center space-x-1 bg-[#F1F3F7] p-1 rounded-lg overflow-x-auto">
             {[
-              { id: 'all', label: 'All', activeBg: 'bg-slate-900 text-white' },
-              { id: 'customer', label: 'Customers', activeBg: 'bg-emerald-600 text-white' },
-              { id: 'lead', label: 'Leads', activeBg: 'bg-amber-600 text-white' },
-              { id: 'partner', label: 'Partners', activeBg: 'bg-purple-600 text-white' },
-              { id: 'inactive', label: 'Inactive', activeBg: 'bg-slate-600 text-white' },
-            ].map((pill) => (
+              { id: 'all', label: 'All Contacts' },
+              { id: 'customer', label: 'Customers' },
+              { id: 'lead', label: 'Leads' },
+              { id: 'partner', label: 'Partners' },
+              { id: 'inactive', label: 'Inactive' },
+            ].map((tab) => (
               <button
-                key={pill.id}
-                onClick={() => setStatusFilter(pill.id)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-all whitespace-nowrap ${
-                  statusFilter === pill.id
-                    ? `${pill.activeBg} shadow-xs`
-                    : 'bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200'
+                key={tab.id}
+                onClick={() => setStatusFilter(tab.id)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
+                  statusFilter === tab.id
+                    ? 'bg-white text-[#171B26] shadow-xs font-semibold'
+                    : 'text-[#697386] hover:text-[#171B26]'
                 }`}
               >
-                {pill.label}
+                {tab.label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Table */}
+        {/* Table with Dedicated Inner Scroll & Sticky Header */}
         <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="inner-table-container">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider text-[11px]">
+              <thead className="sticky-table-header text-slate-600 font-semibold uppercase tracking-wider text-[11px]">
                 <tr>
-                  {showOrgColumn && <th className="py-3.5 px-4">Organization</th>}
-                  <th className="py-3.5 px-4">Contact</th>
-                  <th className="py-3.5 px-4">Company</th>
-                  <th className="py-3.5 px-4">Email & Phone</th>
-                  <th className="py-3.5 px-4">Status</th>
-                  <th className="py-3.5 px-4 text-right">Actions</th>
+                  {showOrgColumn && <th className="py-3 px-4">Organization</th>}
+                  <th className="py-3 px-4">Contact</th>
+                  <th className="py-3 px-4">Company</th>
+                  <th className="py-3 px-4">Email & Phone</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={showOrgColumn ? 6 : 5} className="py-12 text-center text-slate-400">
-                      Loading contacts...
-                    </td>
-                  </tr>
+                {isWorkspaceLoading || isLoading ? (
+                  <TableSkeleton columns={showOrgColumn ? 6 : 5} rows={6} />
                 ) : contacts.length === 0 ? (
                   <tr>
                     <td colSpan={showOrgColumn ? 6 : 5} className="py-12 text-center">
@@ -551,15 +583,24 @@ export default function ContactsPage() {
 
                         <td className="py-3.5 px-4">
                           <div className="flex items-center space-x-2">
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium uppercase tracking-wide ${
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border capitalize ${
                               contact.status === 'customer'
-                                ? 'bg-[#ECFDF5] text-[#047857] border border-[#A7F3D0]'
+                                ? 'bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]'
                                 : contact.status === 'partner'
-                                ? 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
+                                ? 'bg-[#EFF6FF] text-[#1D4ED8] border-[#BFDBFE]'
                                 : contact.status === 'lead'
-                                ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
-                                : 'bg-[#F7F8FA] text-[#697386] border border-[#E7EAF0]'
+                                ? 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]'
+                                : 'bg-[#F7F8FA] text-[#697386] border-[#E7EAF0]'
                             }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+                                contact.status === 'customer'
+                                  ? 'bg-[#047857]'
+                                  : contact.status === 'partner'
+                                  ? 'bg-[#1D4ED8]'
+                                  : contact.status === 'lead'
+                                  ? 'bg-[#B45309]'
+                                  : 'bg-[#697386]'
+                              }`} />
                               {contact.status}
                             </span>
                             {contact.status === 'lead' && (
@@ -975,16 +1016,25 @@ export default function ContactsPage() {
                     <span className="text-xs font-medium text-[#697386] uppercase tracking-wider">Relationship</span>
                     <div className="mt-1">
                       <span
-                        className={`px-2.5 py-0.5 rounded-full text-xs font-medium uppercase tracking-wide ${
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border capitalize ${
                           viewingContact.status === 'customer'
-                            ? 'bg-[#ECFDF5] text-[#047857] border border-[#A7F3D0]'
+                            ? 'bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]'
                             : viewingContact.status === 'partner'
-                            ? 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
+                            ? 'bg-[#EFF6FF] text-[#1D4ED8] border-[#BFDBFE]'
                             : viewingContact.status === 'lead'
-                            ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
-                            : 'bg-[#F7F8FA] text-[#697386] border border-[#E7EAF0]'
+                            ? 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]'
+                            : 'bg-[#F7F8FA] text-[#697386] border-[#E7EAF0]'
                         }`}
                       >
+                        <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+                          viewingContact.status === 'customer'
+                            ? 'bg-[#047857]'
+                            : viewingContact.status === 'partner'
+                            ? 'bg-[#1D4ED8]'
+                            : viewingContact.status === 'lead'
+                            ? 'bg-[#B45309]'
+                            : 'bg-[#697386]'
+                        }`} />
                         {viewingContact.status}
                       </span>
                     </div>

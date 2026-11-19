@@ -9,6 +9,7 @@ import { Task, OrganizationMember, Lead, Contact, Deal } from '../../lib/types/c
 import { hasPermission } from '../../lib/permissions';
 import { toast } from '../../lib/stores/toast-store';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
+import { TaskSkeleton } from '../../components/ui/skeleton';
 import {
   CheckSquare,
   Plus,
@@ -38,6 +39,7 @@ export default function TasksPage() {
     effectiveOrgIds,
     isSuperAdmin: isSuper,
     memberships,
+    isLoading: isWorkspaceLoading,
   } = useWorkspace();
 
   // Tasks state
@@ -67,65 +69,64 @@ export default function TasksPage() {
     related_id: '',
   }));
 
+  useEffect(() => {
+    if (currentOrg?.id) {
+      setTaskFormData((prev) => ({
+        ...prev,
+        organization_id: currentOrg.id,
+      }));
+    }
+  }, [currentOrg?.id]);
+
   const canCreateTask = isSuper || hasPermission(currentRole, currentStatus, 'crm:tasks:create', currentUser);
   const canUpdateTask = isSuper || hasPermission(currentRole, currentStatus, 'crm:tasks:update', currentUser);
   const canDeleteTask = isSuper || hasPermission(currentRole, currentStatus, 'crm:tasks:delete', currentUser);
 
   const orgIdsKey = effectiveOrgIds.join(',');
 
-  const loadMembers = useCallback(async () => {
-    if (effectiveOrgIds.length === 0) return;
-    try {
-      const members = await CRMService.getOrganizationMembers(effectiveOrgIds);
-      setTeamMembers(members);
-    } catch (err) {
-      console.error(err);
-    }
-  }, [orgIdsKey]);
-
-  const loadEntities = useCallback(async () => {
-    if (effectiveOrgIds.length === 0) return;
-    try {
-      const [leadsData, contactsData, dealsData] = await Promise.all([
-        CRMService.getLeads(effectiveOrgIds),
-        CRMService.getContacts(effectiveOrgIds),
-        CRMService.getDeals(effectiveOrgIds),
-      ]);
-      setLeads(leadsData);
-      setContacts(contactsData);
-      setDeals(dealsData);
-    } catch (err) {
-      console.error('Failed to load related CRM entities for tasks:', err);
-    }
-  }, [orgIdsKey]);
-
-  const loadTasks = useCallback(async () => {
+  const loadAllTaskData = useCallback(async () => {
+    if (isWorkspaceLoading) return;
     if (effectiveOrgIds.length === 0) {
       setTasks([]);
       setIsTasksLoading(false);
       return;
     }
-    if (tasks.length === 0) {
-      setIsTasksLoading(true);
-    }
+    setIsTasksLoading(true);
     try {
-      // Always load all tasks so active & completed tasks remain visible and never disappear
-      const data = await CRMService.getTasks(effectiveOrgIds, 'all');
-      setTasks(data);
+      const [members, taskList, leadsData, contactsData, dealsData] = await Promise.all([
+        CRMService.getOrganizationMembers(effectiveOrgIds),
+        CRMService.getTasks(effectiveOrgIds, 'all'),
+        CRMService.getLeads(effectiveOrgIds),
+        CRMService.getContacts(effectiveOrgIds),
+        CRMService.getDeals(effectiveOrgIds),
+      ]);
+      setTeamMembers(members);
+      setTasks(taskList);
+      setLeads(leadsData);
+      setContacts(contactsData);
+      setDeals(dealsData);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load task management data:', err);
     } finally {
       setIsTasksLoading(false);
     }
-  }, [orgIdsKey, tasks.length]);
+  }, [isWorkspaceLoading, orgIdsKey]);
+
+  const loadTasks = useCallback(async () => {
+    if (isWorkspaceLoading || effectiveOrgIds.length === 0) return;
+    try {
+      const data = await CRMService.getTasks(effectiveOrgIds, 'all');
+      setTasks(data);
+    } catch (err) {
+      console.error('Failed to reload tasks:', err);
+    }
+  }, [isWorkspaceLoading, orgIdsKey]);
 
   useEffect(() => {
-    if (effectiveOrgIds.length > 0) {
-      loadTasks();
-      loadMembers();
-      loadEntities();
+    if (!isWorkspaceLoading && effectiveOrgIds.length > 0) {
+      loadAllTaskData();
     }
-  }, [orgIdsKey, loadTasks, loadMembers, loadEntities]);
+  }, [isWorkspaceLoading, orgIdsKey, loadAllTaskData]);
 
   const handleToggleTaskStatus = async (task: Task) => {
     const targetOrgId = task.organization_id || currentOrg?.id;
@@ -456,7 +457,11 @@ export default function TasksPage() {
               </div>
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-wider text-[#697386]">Pending Tasks</p>
-                <p className="text-lg font-semibold text-[#171B26] tabular-nums">{pendingTasks.length}</p>
+                {isWorkspaceLoading || isTasksLoading ? (
+                  <div className="h-6 w-12 bg-slate-200/80 rounded animate-pulse mt-1" />
+                ) : (
+                  <p className="text-lg font-semibold text-[#171B26] tabular-nums">{pendingTasks.length}</p>
+                )}
               </div>
             </div>
           </div>
@@ -475,7 +480,11 @@ export default function TasksPage() {
               </div>
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-wider text-[#047857]">Completed Place</p>
-                <p className="text-lg font-semibold text-[#047857] tabular-nums">{completedTasks.length}</p>
+                {isWorkspaceLoading || isTasksLoading ? (
+                  <div className="h-6 w-12 bg-slate-200/80 rounded animate-pulse mt-1" />
+                ) : (
+                  <p className="text-lg font-semibold text-[#047857] tabular-nums">{completedTasks.length}</p>
+                )}
               </div>
             </div>
           </div>
@@ -494,9 +503,13 @@ export default function TasksPage() {
               </div>
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-wider text-[#697386]">Urgent / High</p>
-                <p className="text-lg font-semibold text-[#B91C1C] tabular-nums">
-                  {urgentHighTasks.length}
-                </p>
+                {isWorkspaceLoading || isTasksLoading ? (
+                  <div className="h-6 w-12 bg-slate-200/80 rounded animate-pulse mt-1" />
+                ) : (
+                  <p className="text-lg font-semibold text-[#B91C1C] tabular-nums">
+                    {urgentHighTasks.length}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -536,19 +549,16 @@ export default function TasksPage() {
           </div>
 
           {/* Task Content */}
-          {isTasksLoading ? (
-            <div className="bg-white rounded-xl border border-[#E7EAF0] p-12 text-center text-sm text-[#697386] flex flex-col items-center justify-center space-y-2 shadow-xs">
-              <Loader2 className="w-5 h-5 text-[#3659C9] animate-spin" />
-              <span>Loading tasks...</span>
-            </div>
+          {isWorkspaceLoading || isTasksLoading ? (
+            <TaskSkeleton rows={5} />
           ) : taskFilter === 'completed' ? (
-            /* Dedicated Completed Place View */
+            /* Dedicated Completed Place View with Inner Scroll */
             <div className="bg-white rounded-xl border border-[#E7EAF0] shadow-xs overflow-hidden">
-              <div className="px-5 py-3.5 bg-[#F8FAFC] border-b border-[#E7EAF0] flex items-center justify-between">
+              <div className="px-5 py-3.5 bg-[#F8FAFC] border-b border-[#E7EAF0] flex items-center justify-between sticky top-0 z-10">
                 <div className="flex items-center space-x-2">
                   <CheckCircle2 className="w-4 h-4 text-[#047857]" />
                   <h3 className="text-sm font-semibold text-[#171B26]">Completed Tasks</h3>
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#ECFDF5] text-[#047857] border border-[#A7F3D0] tabular-nums">
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#ECFDF5] text-[#047857] border border-[#A7F3D0] tabular-nums">
                     {completedTasks.length}
                   </span>
                 </div>
@@ -562,19 +572,19 @@ export default function TasksPage() {
                   </p>
                 </div>
               ) : (
-                <div className="divide-y divide-[#E7EAF0]">
+                <div className="divide-y divide-[#E7EAF0] overflow-y-auto max-h-[calc(100vh-320px)] min-h-[250px]">
                   {completedTasks.map(renderTaskRow)}
                 </div>
               )}
             </div>
           ) : taskFilter === 'urgent_high' ? (
-            /* Dedicated Urgent & High Priority View */
+            /* Dedicated Urgent & High Priority View with Inner Scroll */
             <div className="bg-white rounded-xl border border-[#E7EAF0] shadow-xs overflow-hidden">
-              <div className="px-5 py-3.5 bg-[#F8FAFC] border-b border-[#E7EAF0] flex items-center justify-between">
+              <div className="px-5 py-3.5 bg-[#F8FAFC] border-b border-[#E7EAF0] flex items-center justify-between sticky top-0 z-10">
                 <div className="flex items-center space-x-2">
                   <AlertCircle className="w-4 h-4 text-[#B91C1C]" />
                   <h3 className="text-sm font-semibold text-[#171B26]">Urgent & High Priority Tasks</h3>
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA] tabular-nums">
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA] tabular-nums">
                     {urgentHighTasks.length}
                   </span>
                 </div>
@@ -588,21 +598,21 @@ export default function TasksPage() {
                   </p>
                 </div>
               ) : (
-                <div className="divide-y divide-[#E7EAF0]">
+                <div className="divide-y divide-[#E7EAF0] overflow-y-auto max-h-[calc(100vh-320px)] min-h-[250px]">
                   {urgentHighTasks.map(renderTaskRow)}
                 </div>
               )}
             </div>
           ) : (
-            /* Pending or All View (Completed section is NOT shown below) */
+            /* Pending or All View with Inner Scroll */
             <div className="bg-white rounded-xl border border-[#E7EAF0] shadow-xs overflow-hidden">
-              <div className="px-5 py-3.5 bg-[#F8FAFC] border-b border-[#E7EAF0] flex items-center justify-between">
+              <div className="px-5 py-3.5 bg-[#F8FAFC] border-b border-[#E7EAF0] flex items-center justify-between sticky top-0 z-10">
                 <div className="flex items-center space-x-2">
                   <CheckSquare className="w-4 h-4 text-[#3659C9]" />
                   <h3 className="text-sm font-semibold text-[#171B26]">
                     {taskFilter === 'all' ? 'All Tasks' : 'To-Do Tasks'}
                   </h3>
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] tabular-nums">
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] tabular-nums">
                     {taskFilter === 'all' ? tasks.length : pendingTasks.length}
                   </span>
                 </div>
@@ -620,7 +630,7 @@ export default function TasksPage() {
                   </p>
                 </div>
               ) : (
-                <div className="divide-y divide-[#E7EAF0]">
+                <div className="divide-y divide-[#E7EAF0] overflow-y-auto max-h-[calc(100vh-320px)] min-h-[250px]">
                   {(taskFilter === 'all' ? tasks : pendingTasks).map(renderTaskRow)}
                 </div>
               )}

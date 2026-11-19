@@ -69,3 +69,26 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Dedicated inner scrollable container for data tables */
+.inner-table-container {
+  overflow-y: auto;
+  overflow-x: auto;
+  max-height: calc(100vh - 290px);
+  min-height: 320px;
+}
+
+@media (max-width: 640px) {
+  .inner-table-container {
+    max-height: calc(100vh - 360px);
+  }
+}
+
+/* Ensure sticky table header has background and bottom border during scroll */
+.sticky-table-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: #F8FAFC;
+  box-shadow: 0 1px 0 0 #E2E8F0;
+}

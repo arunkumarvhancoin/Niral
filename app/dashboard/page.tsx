@@ -5,6 +5,7 @@ import { AppShell } from '../../components/layout/app-shell';
 import { useWorkspace } from '../../components/providers/workspace-provider';
 import { CRMService, DashboardMetrics, parseNumericValue } from '../../lib/services/crm-service';
 import { isBharatPlay } from '../../lib/permissions';
+import { Skeleton } from '../../components/ui/skeleton';
 import {
   Users2,
   Target,
@@ -18,7 +19,6 @@ import {
   ArrowUpRight,
   Ticket,
   Calendar,
-  Sparkles,
   ArrowRight,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -40,11 +40,12 @@ export default function DashboardPage() {
   const orgIdsKey = effectiveOrgIds.join(',');
 
   useEffect(() => {
-    if (effectiveOrgIds.length === 0) return;
+    if (workspaceLoading || effectiveOrgIds.length === 0) return;
 
     let isMounted = true;
-    setMetrics(null);
-    setIsLoading(true);
+    if (!metrics) {
+      setIsLoading(true);
+    }
 
     CRMService.getDashboardMetrics(effectiveOrgIds)
       .then((data) => {
@@ -63,7 +64,9 @@ export default function DashboardPage() {
     return () => {
       isMounted = false;
     };
-  }, [orgIdsKey]);
+  }, [workspaceLoading, orgIdsKey]);
+
+  const isDashboardLoading = workspaceLoading || isLoading;
 
   const formatCurrency = (amount: number | string | null | undefined) => {
     const num = parseNumericValue(amount);
@@ -133,9 +136,13 @@ export default function DashboardPage() {
                 <Users2 className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-2xl sm:text-[26px] font-bold text-slate-900 mt-2 tracking-tight tabular-nums">
-              {isLoading ? '...' : metrics?.totalContacts || 0}
-            </p>
+            {isDashboardLoading ? (
+              <Skeleton className="h-8 w-24 my-2" />
+            ) : (
+              <p className="text-2xl sm:text-[26px] font-bold text-slate-900 mt-2 tracking-tight tabular-nums">
+                {metrics?.totalContacts || 0}
+              </p>
+            )}
             <div className="flex items-center justify-between text-xs text-slate-500 mt-2">
               <span>Active directory</span>
               <span className="text-primary-600 font-semibold group-hover:translate-x-0.5 transition-transform flex items-center">
@@ -155,9 +162,13 @@ export default function DashboardPage() {
                 <Target className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-2xl sm:text-[26px] font-bold text-slate-900 mt-2 tracking-tight tabular-nums">
-              {isLoading ? '...' : metrics?.totalLeads || 0}
-            </p>
+            {isDashboardLoading ? (
+              <Skeleton className="h-8 w-24 my-2" />
+            ) : (
+              <p className="text-2xl sm:text-[26px] font-bold text-slate-900 mt-2 tracking-tight tabular-nums">
+                {metrics?.totalLeads || 0}
+              </p>
+            )}
             <div className="flex items-center justify-between text-xs text-slate-500 mt-2">
               <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-semibold text-[11px] border border-purple-200">
                 {metrics?.leadConversionRate || 0}% converted
@@ -179,9 +190,13 @@ export default function DashboardPage() {
                 <BarChart3 className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-2xl sm:text-[26px] font-bold text-slate-900 mt-2 tracking-tight tabular-nums">
-              {isLoading ? '...' : formatCurrency(metrics?.pipelineRevenue || 0)}
-            </p>
+            {isDashboardLoading ? (
+              <Skeleton className="h-8 w-32 my-2" />
+            ) : (
+              <p className="text-2xl sm:text-[26px] font-bold text-slate-900 mt-2 tracking-tight tabular-nums">
+                {formatCurrency(metrics?.pipelineRevenue || 0)}
+              </p>
+            )}
             <div className="flex items-center justify-between text-xs text-slate-500 mt-2">
               <span className="text-slate-700 font-medium">{metrics?.openDeals || 0} in progress</span>
               <span className="text-primary-600 font-semibold group-hover:translate-x-0.5 transition-transform flex items-center">
@@ -201,9 +216,13 @@ export default function DashboardPage() {
                 <DollarSign className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-2xl sm:text-[26px] font-bold text-emerald-600 mt-2 tracking-tight tabular-nums">
-              {isLoading ? '...' : formatCurrency(metrics?.wonRevenue || 0)}
-            </p>
+            {isDashboardLoading ? (
+              <Skeleton className="h-8 w-32 my-2" />
+            ) : (
+              <p className="text-2xl sm:text-[26px] font-bold text-emerald-600 mt-2 tracking-tight tabular-nums">
+                {formatCurrency(metrics?.wonRevenue || 0)}
+              </p>
+            )}
             <div className="flex items-center justify-between text-xs text-slate-500 mt-2">
               <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold text-[11px] border border-emerald-200">
                 {metrics?.closedDeals || 0} deals won
@@ -230,8 +249,21 @@ export default function DashboardPage() {
               </Link>
             </div>
 
-            <div className="divide-y divide-[#E7EAF0] mt-1">
-              {metrics?.upcomingTasks?.length === 0 ? (
+            <div className="overflow-y-auto max-h-[340px] divide-y divide-[#E7EAF0] mt-1 pr-1">
+              {isDashboardLoading ? (
+                <div className="space-y-3 py-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center space-x-3 py-1">
+                      <Skeleton className="w-5 h-5 rounded-full flex-shrink-0" />
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-3 w-1/2" />
+                      </div>
+                      <Skeleton className="h-5 w-14 rounded flex-shrink-0" />
+                    </div>
+                  ))}
+                </div>
+              ) : metrics?.upcomingTasks?.length === 0 ? (
                 <div className="py-8 text-center text-xs text-[#697386]">
                   <CheckCircle2 className="w-7 h-7 text-[#BAC0CE] mx-auto mb-2" />
                   No pending action items for this workspace
@@ -283,8 +315,24 @@ export default function DashboardPage() {
                 </Link>
               </div>
 
-              <div className="divide-y divide-[#E7EAF0] mt-1">
-                {!metrics?.recentRegistrations || metrics?.recentRegistrations.length === 0 ? (
+              <div className="overflow-y-auto max-h-[340px] divide-y divide-[#E7EAF0] mt-1 pr-1">
+                {isDashboardLoading ? (
+                  <div className="space-y-3 py-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-center space-x-3 py-1">
+                        <Skeleton className="w-6 h-6 rounded flex-shrink-0" />
+                        <div className="space-y-1.5 flex-1 min-w-0">
+                          <Skeleton className="h-4 w-3/5" />
+                          <Skeleton className="h-3 w-2/5" />
+                        </div>
+                        <div className="space-y-1 text-right flex-shrink-0">
+                          <Skeleton className="h-4 w-16 ml-auto" />
+                          <Skeleton className="h-3 w-12 ml-auto" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : !metrics?.recentRegistrations || metrics?.recentRegistrations.length === 0 ? (
                   <div className="py-8 text-center text-xs text-[#697386]">
                     <Ticket className="w-7 h-7 text-[#BAC0CE] mx-auto mb-2" />
                     No registrations recorded yet
@@ -344,8 +392,24 @@ export default function DashboardPage() {
                 </Link>
               </div>
 
-              <div className="divide-y divide-[#E7EAF0] mt-1">
-                {!metrics?.recentDeals || metrics?.recentDeals.length === 0 ? (
+              <div className="overflow-y-auto max-h-[340px] divide-y divide-[#E7EAF0] mt-1 pr-1">
+                {isDashboardLoading ? (
+                  <div className="space-y-3 py-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-center space-x-3 py-1">
+                        <Skeleton className="w-6 h-6 rounded flex-shrink-0" />
+                        <div className="space-y-1.5 flex-1 min-w-0">
+                          <Skeleton className="h-4 w-3/5" />
+                          <Skeleton className="h-3 w-2/5" />
+                        </div>
+                        <div className="space-y-1 text-right flex-shrink-0">
+                          <Skeleton className="h-4 w-16 ml-auto" />
+                          <Skeleton className="h-3 w-12 ml-auto" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : !metrics?.recentDeals || metrics?.recentDeals.length === 0 ? (
                   <div className="py-8 text-center text-xs text-[#697386]">
                     <BarChart3 className="w-7 h-7 text-[#BAC0CE] mx-auto mb-2" />
                     No deals created yet

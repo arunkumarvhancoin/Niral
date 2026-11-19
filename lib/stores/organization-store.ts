@@ -29,6 +29,12 @@ export const useOrganizationStore = create<OrganizationState>()(
       memberships: [],
       isLoading: false,
       setCurrentOrg: (org, role, status) => {
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('crm_current_org_id', org.id);
+            localStorage.setItem('crm_current_org_name', org.name);
+          } catch {}
+        }
         if (typeof document !== 'undefined') {
           document.cookie = `active_org_id=${org.id}; path=/; max-age=2592000; SameSite=Lax`;
         }
@@ -41,6 +47,13 @@ export const useOrganizationStore = create<OrganizationState>()(
       setMemberships: (memberships) => set({ memberships }),
       setLoading: (isLoading) => set({ isLoading }),
       reset: () => {
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.removeItem('crm_current_org_id');
+            localStorage.removeItem('crm_current_org_name');
+            localStorage.removeItem('crm_super_admin_selected_orgs');
+          } catch {}
+        }
         if (typeof document !== 'undefined') {
           document.cookie = 'active_org_id=; path=/; max-age=0';
         }

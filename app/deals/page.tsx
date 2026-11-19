@@ -8,6 +8,7 @@ import { Deal, Pipeline, PipelineStage, Contact, Task } from '../../lib/types/cr
 import { hasPermission } from '../../lib/permissions';
 import { toast } from '../../lib/stores/toast-store';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
+import { KanbanSkeleton } from '../../components/ui/skeleton';
 import {
   BarChart3,
   Plus,
@@ -23,7 +24,6 @@ import {
   GripVertical,
   CheckCircle2,
   TrendingUp,
-  Sparkles,
   XCircle,
   Archive,
   RotateCcw,
@@ -48,6 +48,7 @@ export default function DealsPage() {
     isAllOrgsSelected,
     isMultiOrgActive,
     memberships,
+    isLoading: isWorkspaceLoading,
   } = useWorkspace();
   const [pipelines, setPipelines] = useState<(Pipeline & { stages: PipelineStage[] })[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>('');
@@ -87,6 +88,15 @@ export default function DealsPage() {
     status: 'open' as Deal['status'],
   }));
 
+  useEffect(() => {
+    if (currentOrg?.id) {
+      setFormData((prev) => ({
+        ...prev,
+        organization_id: currentOrg.id,
+      }));
+    }
+  }, [currentOrg?.id]);
+
   const canCreate = isSuper || hasPermission(currentRole, currentStatus, 'crm:deals:create', currentUser);
   const canUpdate = isSuper || hasPermission(currentRole, currentStatus, 'crm:deals:update', currentUser);
   const canDelete = isSuper || hasPermission(currentRole, currentStatus, 'crm:deals:delete', currentUser);
@@ -94,6 +104,7 @@ export default function DealsPage() {
   const orgIdsKey = effectiveOrgIds.join(',');
 
   const loadPipelineData = useCallback(async () => {
+    if (isWorkspaceLoading) return;
     if (effectiveOrgIds.length === 0) {
       setDeals([]);
       setContacts([]);
@@ -105,13 +116,13 @@ export default function DealsPage() {
     }
     try {
       const pipeOrgId = currentOrg?.id || effectiveOrgIds[0];
-      const pipes = await CRMService.getPipelines(pipeOrgId);
+      const [pipes, dealList, contactList] = await Promise.all([
+        CRMService.getPipelines(pipeOrgId),
+        CRMService.getDeals(effectiveOrgIds),
+        CRMService.getContacts(effectiveOrgIds),
+      ]);
       setPipelines(pipes);
-
-      const dealList = await CRMService.getDeals(effectiveOrgIds);
       setDeals(dealList);
-
-      const contactList = await CRMService.getContacts(effectiveOrgIds);
       setContacts(contactList);
 
       if (pipes.length > 0) {
@@ -144,13 +155,13 @@ export default function DealsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [orgIdsKey, currentOrg?.id, deals.length]);
+  }, [isWorkspaceLoading, orgIdsKey, currentOrg?.id]);
 
   useEffect(() => {
-    if (effectiveOrgIds.length > 0) {
+    if (!isWorkspaceLoading && effectiveOrgIds.length > 0) {
       loadPipelineData();
     }
-  }, [orgIdsKey, loadPipelineData]);
+  }, [isWorkspaceLoading, orgIdsKey, loadPipelineData]);
 
   // Load connected tasks when viewing a deal
   const viewingDealOrgId = viewingDeal?.organization_id || currentOrg?.id;
@@ -765,8 +776,8 @@ export default function DealsPage() {
            ========================================================================= */}
         {activeView === 'pipeline' && (
           <>
-            {isLoading ? (
-              <div className="py-20 text-center text-xs text-[#697386]">Loading pipeline board...</div>
+            {isWorkspaceLoading || isLoading ? (
+              <KanbanSkeleton columns={activePipeline?.stages?.length || 4} />
             ) : !activePipeline || !activePipeline.stages || activePipeline.stages.length === 0 ? (
               <div className="bg-white p-12 text-center rounded-lg border border-[#E7EAF0]">
                 <BarChart3 className="w-8 h-8 text-[#9AA2B1] mx-auto mb-2" />
@@ -817,8 +828,8 @@ export default function DealsPage() {
                         </span>
                       </div>
 
-                      {/* Deals List */}
-                      <div className="p-2.5 space-y-2 flex-1 overflow-y-auto">
+                      {/* Deals List with Inner Column Scrolling */}
+                      <div className="p-2.5 space-y-2 flex-1 overflow-y-auto max-h-[calc(100vh-340px)] min-h-[420px]">
                         {stageDeals.length === 0 ? (
                           <div
                             className={`py-12 text-center text-xs rounded-md border border-dashed transition-all flex flex-col items-center justify-center ${
@@ -850,31 +861,24 @@ export default function DealsPage() {
                                   borderLeftColor: isWon ? '#047857' : stageColor,
                                 }}
                               >
-                                <div className="flex items-start justify-between">
-                                  <div className="flex items-start space-x-1.5 flex-1 pr-1">
+                                <div className="flex items-start justify-between gap-1.5">
+                                  <div className="flex items-start space-x-1.5 min-w-0 flex-1">
                                     {canUpdate && (
                                       <GripVertical
                                         onClick={(e) => e.stopPropagation()}
                                         className="w-4 h-4 text-[#9AA2B1] group-hover:text-[#697386] mt-0.5 flex-shrink-0 cursor-grab"
                                       />
                                     )}
-                                    <div>
-                                      <h5 className="font-semibold text-[#171B26] text-sm leading-snug group-hover:text-[#3659C9] transition-colors">
-                                        {deal.title}
-                                      </h5>
-                                      {deal.organization?.name && (
-                                        <div className="mt-1">
-                                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-xs font-medium bg-[#F1F3F7] text-[#697386] border border-[#E7EAF0]">
-                                            <Building className="w-3 h-3 text-[#9AA2B1]" />
-                                            <span className="truncate max-w-[140px]">{deal.organization.name}</span>
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
+                                    <h5
+                                      className="font-medium text-[#171B26] text-sm leading-snug group-hover:text-[#3659C9] transition-colors line-clamp-2"
+                                      title={deal.title}
+                                    >
+                                      {deal.title}
+                                    </h5>
                                   </div>
 
                                   {/* Quick Actions Menu Trigger */}
-                                  <div className="relative" onClick={(e) => e.stopPropagation()}>
+                                  <div className="relative flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                                     <button
                                       type="button"
                                       onClick={(e) => {
@@ -954,77 +958,18 @@ export default function DealsPage() {
                                   </div>
                                 </div>
 
-                                <div className="mt-2.5 flex items-center justify-between text-xs">
-                                  <span className="font-bold text-[#171B26] bg-[#F7F8FA] px-2 py-0.5 rounded border border-[#E7EAF0] tabular-nums text-xs">
+                                <div className="mt-2.5 flex items-center justify-between gap-2">
+                                  <span className="font-semibold text-xs text-[#171B26] tabular-nums">
                                     ₹{Number(deal.value).toLocaleString('en-IN')}
                                   </span>
-                                  {deal.expected_close_date && (
-                                    <span className="text-xs text-[#697386] flex items-center font-medium tabular-nums">
-                                      <Calendar className="w-3.5 h-3.5 mr-1 text-[#9AA2B1]" />
-                                      {deal.expected_close_date}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Contact Info */}
-                                {deal.contact && (
-                                  <div className="mt-2 pt-2 border-t border-[#E7EAF0] text-xs text-[#697386] flex items-center space-x-1.5 truncate">
-                                    <div className="w-4 h-4 rounded-full bg-[#F1F3F7] text-[10px] font-semibold flex items-center justify-center text-[#697386] flex-shrink-0 border border-[#E7EAF0]">
-                                      {deal.contact.first_name?.[0] || 'C'}
-                                    </div>
-                                    <span className="truncate">
-                                      {deal.contact.first_name} {deal.contact.last_name}
-                                    </span>
-                                  </div>
-                                )}
-
-                                {/* Status Pill & Stage/Status Select */}
-                                <div className="mt-2 pt-2 border-t border-[#E7EAF0] flex items-center justify-between gap-1">
-                                  <span
-                                    className={`text-xs font-medium px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                                      isWon
-                                        ? 'bg-[#ECFDF5] text-[#047857] border border-[#047857]/20'
-                                        : 'bg-[#F0F4FE] text-[#3659C9] border border-[#3659C9]/20'
-                                    }`}
-                                  >
-                                    {isWon ? 'Won' : 'Open'}
-                                  </span>
-
-                                  {/* Direct Stage / Status dropdown */}
-                                  {canUpdate && activePipeline && (
-                                    <select
-                                      value={
-                                        activePipeline.stages.some((s) => s.id === deal.stage_id)
-                                          ? deal.stage_id
-                                          : stage.id
-                                      }
-                                      onChange={(e) => {
-                                        e.stopPropagation();
-                                        const val = e.target.value;
-                                        if (val === 'action:lost') {
-                                          handleMarkStatus(deal.id, 'lost');
-                                        } else if (val === 'action:inactive') {
-                                          handleMarkStatus(deal.id, 'inactive');
-                                        } else {
-                                          handleStageChange(deal.id, val);
-                                        }
-                                      }}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="text-[10px] bg-[#F7F8FA] hover:bg-[#F1F3F7] text-[#171B26] border border-[#E7EAF0] rounded py-0.5 px-1 font-medium focus:outline-none cursor-pointer transition-colors max-w-[130px] truncate"
-                                      title="Change stage or status"
+                                  {isSuper && deal.organization?.name && (
+                                    <span
+                                      className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-[#F1F3F7] text-[#697386] border border-[#E7EAF0] max-w-[130px] truncate"
+                                      title={deal.organization.name}
                                     >
-                                      <optgroup label="Move Stage">
-                                        {activePipeline.stages.map((s) => (
-                                          <option key={s.id} value={s.id}>
-                                            &rarr; {s.name}
-                                          </option>
-                                        ))}
-                                      </optgroup>
-                                      <optgroup label="Change Status">
-                                        <option value="action:lost">❌ Mark as Lost</option>
-                                        <option value="action:inactive">⏸ Mark as Inactive</option>
-                                      </optgroup>
-                                    </select>
+                                      <Building className="w-3 h-3 text-[#9AA2B1] flex-shrink-0" />
+                                      <span className="truncate">{deal.organization.name}</span>
+                                    </span>
                                   )}
                                 </div>
                               </div>
@@ -1081,8 +1026,9 @@ export default function DealsPage() {
                 </p>
               </div>
             ) : (
-              <div className="bg-white rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] overflow-hidden divide-y divide-[#E7EAF0]">
-                {filteredLostDeals.map((deal) => (
+              <div className="bg-white rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] overflow-hidden">
+                <div className="overflow-y-auto max-h-[calc(100vh-320px)] min-h-[300px] divide-y divide-[#E7EAF0]">
+                  {filteredLostDeals.map((deal) => (
                   <div
                     key={deal.id}
                     className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#F7F8FA] transition-colors"
@@ -1094,7 +1040,8 @@ export default function DealsPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center space-x-2">
                           <h4 className="text-[13px] font-semibold text-[#171B26] truncate">{deal.title}</h4>
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full uppercase bg-[#FEF2F2] text-[#B91C1C] border border-[#B91C1C]/20">
+                          <span className="inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]">
+                            <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-[#B91C1C]" />
                             Lost
                           </span>
                         </div>
@@ -1169,6 +1116,7 @@ export default function DealsPage() {
                     </div>
                   </div>
                 ))}
+                </div>
               </div>
             )}
           </div>
@@ -1215,8 +1163,9 @@ export default function DealsPage() {
                 </p>
               </div>
             ) : (
-              <div className="bg-white rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] overflow-hidden divide-y divide-[#E7EAF0]">
-                {filteredInactiveDeals.map((deal) => (
+              <div className="bg-white rounded-lg border border-[#E7EAF0] shadow-[0_1px_2px_rgba(0,0,0,0.03)] overflow-hidden">
+                <div className="overflow-y-auto max-h-[calc(100vh-320px)] min-h-[300px] divide-y divide-[#E7EAF0]">
+                  {filteredInactiveDeals.map((deal) => (
                   <div
                     key={deal.id}
                     className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#F7F8FA] transition-colors"
@@ -1228,7 +1177,8 @@ export default function DealsPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center space-x-2">
                           <h4 className="text-[13px] font-semibold text-[#171B26] truncate">{deal.title}</h4>
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full uppercase bg-[#F1F3F7] text-[#697386] border border-[#E7EAF0]">
+                          <span className="inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded bg-[#F1F3F7] text-[#697386] border border-[#E7EAF0]">
+                            <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-[#697386]" />
                             Inactive
                           </span>
                         </div>
@@ -1310,6 +1260,7 @@ export default function DealsPage() {
                     </div>
                   </div>
                 ))}
+                </div>
               </div>
             )}
           </div>

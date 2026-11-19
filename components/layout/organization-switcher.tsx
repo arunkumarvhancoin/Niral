@@ -15,14 +15,17 @@ import {
   Loader2,
   Search,
   X,
-  Sparkles,
 } from 'lucide-react';
 import Link from 'next/navigation';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from '../../lib/stores/toast-store';
 import { isSuperAdmin } from '../../lib/permissions';
 
-export function OrganizationSwitcher() {
+interface OrganizationSwitcherProps {
+  isCollapsed?: boolean;
+}
+
+export function OrganizationSwitcher({ isCollapsed = false }: OrganizationSwitcherProps) {
   const { currentOrg, currentRole, currentUser, memberships, switchOrganization, isSwitchingOrg } = useWorkspace();
   const isSuper = isSuperAdmin(currentUser);
   const [isOpen, setIsOpen] = useState(false);
@@ -100,35 +103,59 @@ export function OrganizationSwitcher() {
   };
 
   return (
-    <div className="relative w-full" ref={dropdownRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        disabled={isSwitchingOrg}
-        className="w-full flex items-center justify-between p-2 rounded-md border border-[#E7EAF0] bg-white hover:bg-[#F1F3F7] transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.03)] text-left group disabled:opacity-75"
-      >
-        <div className="flex items-center space-x-2.5 overflow-hidden">
-          <div className="w-7 h-7 rounded-md bg-[#F1F3F7] border border-[#E7EAF0] flex items-center justify-center text-[#3659C9] font-medium flex-shrink-0 overflow-hidden">
-            {isSwitchingOrg ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#3659C9]" />
-            ) : currentOrg?.logo_url ? (
-              <img src={currentOrg.logo_url} alt={currentOrg.name} className="w-full h-full object-cover" />
-            ) : (
-              <Building2 className="w-3.5 h-3.5 text-[#3659C9]" />
-            )}
-          </div>
-          <span className="text-[13px] font-medium text-[#171B26] truncate">
-            {isSwitchingOrg ? 'Switching...' : currentOrg?.name || 'Select Workspace'}
+    <div className={`relative ${isCollapsed ? 'flex justify-center' : 'w-full'}`} ref={dropdownRef}>
+      {isCollapsed ? (
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          disabled={isSwitchingOrg}
+          className="w-9 h-9 rounded-md border border-[#E7EAF0] bg-white hover:bg-[#F1F3F7] transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.03)] flex items-center justify-center text-[#3659C9] disabled:opacity-75 relative group"
+          title={isSwitchingOrg ? 'Switching...' : currentOrg?.name || 'Select Workspace'}
+        >
+          {isSwitchingOrg ? (
+            <Loader2 className="w-4 h-4 animate-spin text-[#3659C9]" />
+          ) : currentOrg?.logo_url ? (
+            <img src={currentOrg.logo_url} alt={currentOrg.name} className="w-6 h-6 object-cover rounded" />
+          ) : (
+            <Building2 className="w-4 h-4 text-[#3659C9]" />
+          )}
+          <span className="pointer-events-none absolute left-full ml-2 px-2 py-1 rounded bg-[#171B26] text-white text-[11px] font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-md">
+            {isSwitchingOrg ? 'Switching...' : currentOrg?.name || 'Workspace'}
           </span>
-        </div>
-        {isSwitchingOrg ? (
-          <Loader2 className="w-3.5 h-3.5 text-[#3659C9] animate-spin ml-2 flex-shrink-0" />
-        ) : (
-          <ChevronDown className="w-3.5 h-3.5 text-[#697386] group-hover:text-[#171B26] transition-transform ml-2 flex-shrink-0" />
-        )}
-      </button>
+        </button>
+      ) : (
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          disabled={isSwitchingOrg}
+          className="w-full flex items-center justify-between p-2 rounded-md border border-[#E7EAF0] bg-white hover:bg-[#F1F3F7] transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.03)] text-left group disabled:opacity-75"
+        >
+          <div className="flex items-center space-x-2.5 overflow-hidden">
+            <div className="w-7 h-7 rounded-md bg-[#F1F3F7] border border-[#E7EAF0] flex items-center justify-center text-[#3659C9] font-medium flex-shrink-0 overflow-hidden">
+              {isSwitchingOrg ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#3659C9]" />
+              ) : currentOrg?.logo_url ? (
+                <img src={currentOrg.logo_url} alt={currentOrg.name} className="w-full h-full object-cover" />
+              ) : (
+                <Building2 className="w-3.5 h-3.5 text-[#3659C9]" />
+              )}
+            </div>
+            <span className="text-[13px] font-medium text-[#171B26] truncate">
+              {isSwitchingOrg ? 'Switching...' : currentOrg?.name || 'Select Workspace'}
+            </span>
+          </div>
+          {isSwitchingOrg ? (
+            <Loader2 className="w-3.5 h-3.5 text-[#3659C9] animate-spin ml-2 flex-shrink-0" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-[#697386] group-hover:text-[#171B26] transition-transform ml-2 flex-shrink-0" />
+          )}
+        </button>
+      )}
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1.5 w-80 bg-white rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.08)] border border-[#E7EAF0] z-50 py-1.5 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-100">
+        <div
+          className={`absolute ${
+            isCollapsed ? 'top-0 left-full ml-2' : 'top-full left-0 mt-1.5'
+          } w-80 bg-white rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.12)] border border-[#E7EAF0] z-50 py-1.5 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-100`}
+        >
           <div className="px-3 py-1.5 flex items-center justify-between text-[11px] font-medium text-[#697386] uppercase tracking-wider">
             <span>{isSuper ? `All Organizations (${approvedMemberships.length})` : `Workspaces (${approvedMemberships.length})`}</span>
             {isSuper && (
@@ -234,7 +261,7 @@ export function OrganizationSwitcher() {
               <button
                 onClick={() => {
                   setIsOpen(false);
-                  router.push('/onboarding?step=create');
+                  router.push(`/onboarding?step=create&from=${encodeURIComponent(pathname)}`);
                 }}
                 className="w-full flex items-center space-x-2 p-1.5 rounded-md text-[#171B26] hover:bg-[#F1F3F7] text-[13px] transition-colors text-left"
               >
@@ -248,7 +275,7 @@ export function OrganizationSwitcher() {
             <button
               onClick={() => {
                 setIsOpen(false);
-                router.push('/onboarding');
+                router.push(`/onboarding?from=${encodeURIComponent(pathname)}`);
               }}
               className="w-full flex items-center space-x-2 p-1.5 rounded-md text-[#171B26] hover:bg-[#F1F3F7] text-[13px] transition-colors text-left"
             >
@@ -266,7 +293,7 @@ export function OrganizationSwitcher() {
               className="w-full flex items-center space-x-2 p-1.5 rounded-md text-[#3659C9] hover:bg-blue-50 text-[13px] transition-colors text-left font-medium"
             >
               <div className="w-5 h-5 rounded border border-blue-200 bg-blue-50 flex items-center justify-center text-[#3659C9]">
-                <Sparkles className="w-3 h-3" />
+                <Compass className="w-3 h-3" />
               </div>
               <span>Niral Suite & Other Services</span>
             </button>

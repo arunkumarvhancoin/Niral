@@ -19,7 +19,6 @@ import {
   Database,
   Cpu,
   Clock,
-  Sparkles,
 } from 'lucide-react';
 
 export default function RootLandingPage() {
@@ -37,7 +36,7 @@ export default function RootLandingPage() {
       badge: 'Production Ready',
       badgeColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
       icon: Target,
-      href: '/onboarding',
+      href: '/onboarding?from=/',
       cta: 'Launch CRM Workspace',
       metrics: [
         { label: 'Pipeline Velocity', val: 'Sub-second' },
@@ -57,7 +56,7 @@ export default function RootLandingPage() {
       category: 'Customer Support',
       status: 'In Development',
       isLive: false,
-      tagline: 'Unified omnichannel customer inbox, automated SLA routing, and AI triage.',
+      tagline: 'Unified omnichannel customer inbox, automated SLA routing, and priority triage.',
       badge: 'Coming Soon',
       badgeColor: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
       icon: Headphones,
@@ -189,7 +188,7 @@ export default function RootLandingPage() {
                   {currentUser.email}
                 </span>
                 <Link
-                  href="/onboarding"
+                  href="/onboarding?from=/"
                   className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-[#3659C9] hover:bg-[#2B47A1] text-white text-xs font-semibold shadow-sm transition-all"
                 >
                   <span>Enter Workspace</span>
@@ -198,7 +197,7 @@ export default function RootLandingPage() {
               </div>
             ) : (
               <Link
-                href="/onboarding"
+                href="/onboarding?from=/"
                 className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-white text-[#090D16] hover:bg-slate-100 text-xs font-bold shadow-sm transition-all"
               >
                 <span>Launch CRM</span>
@@ -212,7 +211,7 @@ export default function RootLandingPage() {
       {/* Main Hero Section */}
       <section className="relative z-10 pt-20 pb-16 lg:pt-28 lg:pb-24 border-b border-white/[0.08]">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6">
-          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.1] text-xs font-mono text-slate-300">
+          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-md bg-white/[0.04] border border-white/[0.1] text-xs font-mono text-slate-300">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
             <span>NIRAL ENTERPRISE SUITE // V1.0</span>
           </div>
@@ -228,7 +227,7 @@ export default function RootLandingPage() {
 
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
-              href="/onboarding"
+              href="/onboarding?from=/"
               className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-6 py-3 rounded-xl bg-[#3659C9] hover:bg-[#2B47A1] text-white text-sm font-semibold shadow-lg shadow-[#3659C9]/20 transition-all hover:translate-y-[-1px]"
             >
               <span>Get Started with Niral CRM</span>
@@ -278,7 +277,7 @@ export default function RootLandingPage() {
             <div className="p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
               <div className="lg:col-span-7 space-y-4 text-left">
                 <div className="flex items-center space-x-2">
-                  <span className={`text-[11px] font-mono uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${currentApp.badgeColor}`}>
+                  <span className={`text-[11px] font-mono uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${currentApp.badgeColor}`}>
                     {currentApp.badge}
                   </span>
                   <span className="text-xs text-slate-400 font-mono">• {currentApp.category}</span>
@@ -439,7 +438,7 @@ export default function RootLandingPage() {
           </div>
 
           <div className="flex items-center space-x-6">
-            <Link href="/onboarding" className="text-white hover:text-[#3659C9] font-medium transition-colors">
+            <Link href="/onboarding?from=/" className="text-white hover:text-[#3659C9] font-medium transition-colors">
               Launch CRM Workspace
             </Link>
             <span>© 2026 NIRAL Inc.</span>

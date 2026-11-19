@@ -9,6 +9,7 @@ import { Lead } from '../../lib/types/crm';
 import { hasPermission, isBharatPlay, isSuperAdmin } from '../../lib/permissions';
 import { toast } from '../../lib/stores/toast-store';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
+import { TableSkeleton } from '../../components/ui/skeleton';
 import {
   Target,
   Plus,
@@ -23,7 +24,6 @@ import {
   Mail,
   Building,
   AlertCircle,
-  Sparkles,
   TrendingUp,
   CheckCircle2,
   Ticket,
@@ -49,30 +49,40 @@ export default function LeadsPage() {
     isSuperAdmin: isSuper,
     isAllOrgsSelected,
     isMultiOrgActive,
+    isLoading: isWorkspaceLoading,
   } = useWorkspace();
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [orgFilter, setOrgFilter] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
 
+  // Debounce search query to prevent hammering Supabase on every keystroke
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [search]);
+
   // Sync org filter if currentOrg changes
   useEffect(() => {
-    if (!isSuper && currentOrg?.id) {
+    if (currentOrg?.id) {
       setOrgFilter(currentOrg.id);
     }
-  }, [currentOrg?.id, isSuper]);
+  }, [currentOrg?.id]);
 
   // Determine active query org IDs based on orgFilter
   const effectiveOrgIds =
     orgFilter !== 'all'
       ? [orgFilter]
       : globalOrgIds.length > 0
-      ? globalOrgIds
-      : currentOrg?.id
-      ? [currentOrg.id]
-      : [];
+        ? globalOrgIds
+        : currentOrg?.id
+          ? [currentOrg.id]
+          : [];
 
   // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -91,6 +101,16 @@ export default function LeadsPage() {
     value: 10000,
   });
 
+  // Sync formData organization_id when currentOrg changes
+  useEffect(() => {
+    if (currentOrg?.id) {
+      setFormData((prev) => ({
+        ...prev,
+        organization_id: currentOrg.id,
+      }));
+    }
+  }, [currentOrg?.id]);
+
   // Lead Details Pop-up state
   const [viewingLead, setViewingLead] = useState<Lead | null>(null);
 
@@ -108,29 +128,28 @@ export default function LeadsPage() {
   const orgIdsKey = effectiveOrgIds.join(',');
 
   const loadLeads = useCallback(async () => {
+    if (isWorkspaceLoading) return;
     if (effectiveOrgIds.length === 0) {
       setLeads([]);
       setIsLoading(false);
       return;
     }
-    if (leads.length === 0) {
-      setIsLoading(true);
-    }
+    setIsLoading(true);
     try {
-      const data = await CRMService.getLeads(effectiveOrgIds, search, statusFilter);
+      const data = await CRMService.getLeads(effectiveOrgIds, debouncedSearch, statusFilter);
       setLeads(data);
     } catch (err) {
       console.error(err);
     } finally {
       setIsLoading(false);
     }
-  }, [orgIdsKey, search, statusFilter, leads.length]);
+  }, [isWorkspaceLoading, orgIdsKey, debouncedSearch, statusFilter]);
 
   useEffect(() => {
-    if (effectiveOrgIds.length > 0) {
+    if (!isWorkspaceLoading && effectiveOrgIds.length > 0) {
       loadLeads();
     }
-  }, [orgIdsKey, loadLeads]);
+  }, [isWorkspaceLoading, orgIdsKey, loadLeads]);
 
   const handleOpenCreate = () => {
     setEditingLead(null);
@@ -287,9 +306,9 @@ export default function LeadsPage() {
   // Dedicated Bharat Play check
   const hasBPSelected = isSuper
     ? effectiveOrgIds.some((id) => {
-        const org = memberships.find((m) => m.organization.id === id)?.organization;
-        return isBharatPlay(org);
-      })
+      const org = memberships.find((m) => m.organization.id === id)?.organization;
+      return isBharatPlay(org);
+    })
     : isBharatPlay(currentOrg);
 
   const isBharatPlayRegistration = (lead: Lead) => {
@@ -350,11 +369,10 @@ export default function LeadsPage() {
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">Leads Pipeline</h1>
             <p className="text-[13px] text-slate-500 mt-0.5">
               {isSuper
-                ? `Prospects, inbound inquiries, and qualification across ${
-                    orgFilter !== 'all'
-                      ? memberships.find((m) => m.organization.id === orgFilter)?.organization.name || 'selected organization'
-                      : 'all organizations'
-                  }.`
+                ? `Prospects, inbound inquiries, and qualification across ${orgFilter !== 'all'
+                  ? memberships.find((m) => m.organization.id === orgFilter)?.organization.name || 'selected organization'
+                  : 'all organizations'
+                }.`
                 : `Prospects, inbound inquiries, and qualification for ${currentOrg?.name}.`}
             </p>
           </div>
@@ -377,7 +395,11 @@ export default function LeadsPage() {
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total Leads</p>
-              <p className="text-2xl font-bold text-slate-900 tabular-nums">{displayLeads.length}</p>
+              {isWorkspaceLoading || isLoading ? (
+                <div className="h-7 w-14 bg-slate-200/80 rounded animate-pulse mt-1" />
+              ) : (
+                <p className="text-2xl font-bold text-slate-900 tabular-nums">{displayLeads.length}</p>
+              )}
             </div>
           </div>
 
@@ -387,7 +409,11 @@ export default function LeadsPage() {
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">High / Urgent</p>
-              <p className="text-2xl font-bold text-rose-600 tabular-nums">{highPriorityCount}</p>
+              {isWorkspaceLoading || isLoading ? (
+                <div className="h-7 w-14 bg-slate-200/80 rounded animate-pulse mt-1" />
+              ) : (
+                <p className="text-2xl font-bold text-rose-600 tabular-nums">{highPriorityCount}</p>
+              )}
             </div>
           </div>
 
@@ -397,7 +423,11 @@ export default function LeadsPage() {
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Qualified Leads</p>
-              <p className="text-2xl font-bold text-purple-700 tabular-nums">{qualifiedCount}</p>
+              {isWorkspaceLoading || isLoading ? (
+                <div className="h-7 w-14 bg-slate-200/80 rounded animate-pulse mt-1" />
+              ) : (
+                <p className="text-2xl font-bold text-purple-700 tabular-nums">{qualifiedCount}</p>
+              )}
             </div>
           </div>
 
@@ -407,7 +437,11 @@ export default function LeadsPage() {
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Converted to Deal</p>
-              <p className="text-2xl font-bold text-emerald-600 tabular-nums">{convertedCount}</p>
+              {isWorkspaceLoading || isLoading ? (
+                <div className="h-7 w-14 bg-slate-200/80 rounded animate-pulse mt-1" />
+              ) : (
+                <p className="text-2xl font-bold text-emerald-600 tabular-nums">{convertedCount}</p>
+              )}
             </div>
           </div>
         </div>
@@ -447,51 +481,46 @@ export default function LeadsPage() {
             )}
           </div>
 
-          <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 md:pb-0">
+          <div className="flex items-center space-x-1 bg-[#F1F3F7] p-1 rounded-lg overflow-x-auto">
             {[
-              { id: 'all', label: 'All', activeBg: 'bg-slate-900 text-white' },
-              { id: 'New', label: 'New', activeBg: 'bg-blue-600 text-white' },
-              { id: 'Contacted', label: 'Contacted', activeBg: 'bg-amber-600 text-white' },
-              { id: 'Qualified', label: 'Qualified', activeBg: 'bg-purple-600 text-white' },
-              { id: 'Converted', label: 'Converted', activeBg: 'bg-emerald-600 text-white' },
-              { id: 'Lost', label: 'Lost', activeBg: 'bg-rose-600 text-white' },
-            ].map((pill) => (
+              { id: 'all', label: 'All Leads' },
+              { id: 'New', label: 'New' },
+              { id: 'Contacted', label: 'Contacted' },
+              { id: 'Qualified', label: 'Qualified' },
+              { id: 'Converted', label: 'Converted' },
+              { id: 'Lost', label: 'Lost' },
+            ].map((tab) => (
               <button
-                key={pill.id}
-                onClick={() => setStatusFilter(pill.id)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-all whitespace-nowrap ${
-                  statusFilter === pill.id
-                    ? `${pill.activeBg} shadow-xs`
-                    : 'bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200'
-                }`}
+                key={tab.id}
+                onClick={() => setStatusFilter(tab.id)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${statusFilter === tab.id
+                    ? 'bg-white text-[#171B26] shadow-xs font-semibold'
+                    : 'text-[#697386] hover:text-[#171B26]'
+                  }`}
               >
-                {pill.label}
+                {tab.label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Leads Table */}
+        {/* Leads Table with Dedicated Inner Scroll & Sticky Header */}
         <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="inner-table-container">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider text-[11px]">
+              <thead className="sticky-table-header text-slate-600 font-semibold uppercase tracking-wider text-[11px]">
                 <tr>
-                  {showOrgColumn && <th className="py-3.5 px-4">Organization</th>}
-                  <th className="py-3.5 px-4">Lead & Company</th>
-                  <th className="py-3.5 px-4">Contact Person</th>
-                  <th className="py-3.5 px-4">Estimated Value</th>
-                  <th className="py-3.5 px-4">Status & Priority</th>
-                  <th className="py-3.5 px-4 text-right">Actions</th>
+                  {showOrgColumn && <th className="py-3 px-4">Organization</th>}
+                  <th className="py-3 px-4">Lead & Company</th>
+                  <th className="py-3 px-4">Contact Person</th>
+                  <th className="py-3 px-4">Estimated Value</th>
+                  <th className="py-3 px-4">Status & Priority</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={showOrgColumn ? 6 : 5} className="py-12 text-center text-slate-400">
-                      Loading leads...
-                    </td>
-                  </tr>
+                {isWorkspaceLoading || isLoading ? (
+                  <TableSkeleton columns={showOrgColumn ? 6 : 5} rows={6} />
                 ) : displayLeads.length === 0 ? (
                   <tr>
                     <td colSpan={showOrgColumn ? 6 : 5} className="py-12 text-center">
@@ -566,28 +595,36 @@ export default function LeadsPage() {
                         <td className="py-3.5 px-4">
                           <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
                             <span
-                              className={`px-2.5 py-0.5 rounded-full text-xs font-medium uppercase tracking-wide ${
-                                lead.status === 'Converted'
-                                  ? 'bg-[#ECFDF5] text-[#047857] border border-[#A7F3D0]'
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border capitalize ${lead.status === 'Converted'
+                                  ? 'bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]'
                                   : lead.status === 'Qualified'
-                                  ? 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
-                                  : lead.status === 'Contacted'
-                                  ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
-                                  : lead.status === 'Lost'
-                                  ? 'bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]'
-                                  : 'bg-[#F5F3FF] text-[#5B21B6] border border-[#DDD6FE]'
-                              }`}
+                                    ? 'bg-[#EFF6FF] text-[#1D4ED8] border-[#BFDBFE]'
+                                    : lead.status === 'Contacted'
+                                      ? 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]'
+                                      : lead.status === 'Lost'
+                                        ? 'bg-[#FEF2F2] text-[#B91C1C] border-[#FECACA]'
+                                        : 'bg-[#F5F3FF] text-[#5B21B6] border-[#DDD6FE]'
+                                }`}
                             >
+                              <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${lead.status === 'Converted'
+                                  ? 'bg-[#047857]'
+                                  : lead.status === 'Qualified'
+                                    ? 'bg-[#1D4ED8]'
+                                    : lead.status === 'Contacted'
+                                      ? 'bg-[#B45309]'
+                                      : lead.status === 'Lost'
+                                        ? 'bg-[#B91C1C]'
+                                        : 'bg-[#5B21B6]'
+                                }`} />
                               {lead.status}
                             </span>
                             <span
-                              className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                lead.priority === 'Urgent'
+                              className={`px-2 py-0.5 rounded text-xs font-medium ${lead.priority === 'Urgent'
                                   ? 'bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]'
                                   : lead.priority === 'High'
-                                  ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
-                                  : 'bg-[#F7F8FA] text-[#697386] border border-[#E7EAF0]'
-                              }`}
+                                    ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
+                                    : 'bg-[#F7F8FA] text-[#697386] border border-[#E7EAF0]'
+                                }`}
                             >
                               {lead.priority}
                             </span>
@@ -662,145 +699,145 @@ export default function LeadsPage() {
 
               <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
                 <div className="p-6 space-y-4 overflow-y-auto flex-1 no-scrollbar">
-                {/* Organization Selector for Super Admin */}
-                {isSuper && !editingLead && (
-                  <div>
-                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">
-                      Organization *
-                    </label>
-                    <select
-                      value={formData.organization_id}
-                      onChange={(e) => setFormData({ ...formData, organization_id: e.target.value })}
-                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
-                    >
-                      {memberships.map((m) => (
-                        <option key={m.organization.id} value={m.organization.id}>
-                          {m.organization.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                  {/* Organization Selector for Super Admin */}
+                  {isSuper && !editingLead && (
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">
+                        Organization *
+                      </label>
+                      <select
+                        value={formData.organization_id}
+                        onChange={(e) => setFormData({ ...formData, organization_id: e.target.value })}
+                        className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
+                      >
+                        {memberships.map((m) => (
+                          <option key={m.organization.id} value={m.organization.id}>
+                            {m.organization.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
-                <div>
-                  <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Lead Title / Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Acme Corp Inbound"
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Lead Contact First Name</label>
+                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Lead Title / Name *</label>
                     <input
                       type="text"
-                      value={formData.first_name}
-                      onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                      required
+                      placeholder="e.g. Acme Corp Inbound"
+                      value={formData.title}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                       className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Last Name</label>
-                    <input
-                      type="text"
-                      value={formData.last_name}
-                      onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
-                    />
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Lead Contact First Name</label>
+                      <input
+                        type="text"
+                        value={formData.first_name}
+                        onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                        className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Last Name</label>
+                      <input
+                        type="text"
+                        value={formData.last_name}
+                        onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                        className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Company Name</label>
+                      <input
+                        type="text"
+                        value={formData.company}
+                        onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                        className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Est. Deal Value (₹)</label>
+                      <input
+                        type="number"
+                        value={formData.value}
+                        onChange={(e) => setFormData({ ...formData, value: Number(e.target.value) })}
+                        className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] tabular-nums focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Source</label>
+                      <select
+                        value={formData.source}
+                        onChange={(e) => setFormData({ ...formData, source: e.target.value as any })}
+                        className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
+                      >
+                        <option value="Website">Website</option>
+                        <option value="Referral">Referral</option>
+                        <option value="Outreach">Outreach</option>
+                        <option value="Inbound">Inbound</option>
+                        <option value="Event">Event</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Status</label>
+                      <select
+                        value={formData.status}
+                        onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                        className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
+                      >
+                        <option value="New">New</option>
+                        <option value="Contacted">Contacted</option>
+                        <option value="Qualified">Qualified</option>
+                        <option value="Lost">Lost</option>
+                        <option value="Converted">Converted</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Priority</label>
+                      <select
+                        value={formData.priority}
+                        onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
+                        className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
+                      >
+                        <option value="Low">Low</option>
+                        <option value="Medium">Medium</option>
+                        <option value="High">High</option>
+                        <option value="Urgent">Urgent</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Company Name</label>
-                    <input
-                      type="text"
-                      value={formData.company}
-                      onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] placeholder:text-[#9AA2B1] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Est. Deal Value (₹)</label>
-                    <input
-                      type="number"
-                      value={formData.value}
-                      onChange={(e) => setFormData({ ...formData, value: Number(e.target.value) })}
-                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] tabular-nums focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
-                    />
-                  </div>
+                <div className="px-6 py-4 border-t border-[#E7EAF0] bg-slate-50 flex items-center justify-end space-x-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-3.5 py-2 text-[13px] font-medium text-[#697386] hover:text-[#171B26] hover:bg-[#F1F3F7] rounded-md transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-[13px] font-medium text-white bg-[#3659C9] hover:bg-[#2B47A1] rounded-md shadow-xs transition-colors"
+                  >
+                    {editingLead ? 'Update Lead' : 'Save Lead'}
+                  </button>
                 </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Source</label>
-                    <select
-                      value={formData.source}
-                      onChange={(e) => setFormData({ ...formData, source: e.target.value as any })}
-                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
-                    >
-                      <option value="Website">Website</option>
-                      <option value="Referral">Referral</option>
-                      <option value="Outreach">Outreach</option>
-                      <option value="Inbound">Inbound</option>
-                      <option value="Event">Event</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Status</label>
-                    <select
-                      value={formData.status}
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
-                    >
-                      <option value="New">New</option>
-                      <option value="Contacted">Contacted</option>
-                      <option value="Qualified">Qualified</option>
-                      <option value="Lost">Lost</option>
-                      <option value="Converted">Converted</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[12px] font-medium text-[#171B26] mb-1.5">Priority</label>
-                    <select
-                      value={formData.priority}
-                      onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
-                      className="w-full text-[13px] rounded-md border border-[#E7EAF0] bg-white px-3 py-2 text-[#171B26] focus:outline-none focus:border-[#3659C9] focus:ring-1 focus:ring-[#3659C9] transition-all"
-                    >
-                      <option value="Low">Low</option>
-                      <option value="Medium">Medium</option>
-                      <option value="High">High</option>
-                      <option value="Urgent">Urgent</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="px-6 py-4 border-t border-[#E7EAF0] bg-slate-50 flex items-center justify-end space-x-2 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-3.5 py-2 text-[13px] font-medium text-[#697386] hover:text-[#171B26] hover:bg-[#F1F3F7] rounded-md transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-[13px] font-medium text-white bg-[#3659C9] hover:bg-[#2B47A1] rounded-md shadow-xs transition-colors"
-                >
-                  {editingLead ? 'Update Lead' : 'Save Lead'}
-                </button>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        )}
         {/* Quick Task for Lead Modal */}
         {taskLead && (
           <div className="fixed inset-0 bg-[#171B26]/40 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
@@ -928,28 +965,36 @@ export default function LeadsPage() {
                     <span className="text-xs font-medium text-[#697386] uppercase tracking-wider">Status & Priority</span>
                     <div className="flex items-center space-x-1.5 mt-1">
                       <span
-                        className={`px-2.5 py-0.5 rounded-full text-xs font-medium uppercase tracking-wide ${
-                          viewingLead.status === 'Converted'
-                            ? 'bg-[#ECFDF5] text-[#047857] border border-[#A7F3D0]'
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border capitalize ${viewingLead.status === 'Converted'
+                            ? 'bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]'
                             : viewingLead.status === 'Qualified'
-                            ? 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
-                            : viewingLead.status === 'Contacted'
-                            ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
-                            : viewingLead.status === 'Lost'
-                            ? 'bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]'
-                            : 'bg-[#F5F3FF] text-[#5B21B6] border border-[#DDD6FE]'
-                        }`}
+                              ? 'bg-[#EFF6FF] text-[#1D4ED8] border-[#BFDBFE]'
+                              : viewingLead.status === 'Contacted'
+                                ? 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]'
+                                : viewingLead.status === 'Lost'
+                                  ? 'bg-[#FEF2F2] text-[#B91C1C] border-[#FECACA]'
+                                  : 'bg-[#F5F3FF] text-[#5B21B6] border-[#DDD6FE]'
+                          }`}
                       >
+                        <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${viewingLead.status === 'Converted'
+                            ? 'bg-[#047857]'
+                            : viewingLead.status === 'Qualified'
+                              ? 'bg-[#1D4ED8]'
+                              : viewingLead.status === 'Contacted'
+                                ? 'bg-[#B45309]'
+                                : viewingLead.status === 'Lost'
+                                  ? 'bg-[#B91C1C]'
+                                  : 'bg-[#5B21B6]'
+                          }`} />
                         {viewingLead.status}
                       </span>
                       <span
-                        className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          viewingLead.priority === 'Urgent'
+                        className={`px-2 py-0.5 rounded text-xs font-medium ${viewingLead.priority === 'Urgent'
                             ? 'bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]'
                             : viewingLead.priority === 'High'
-                            ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
-                            : 'bg-[#F7F8FA] text-[#697386] border border-[#E7EAF0]'
-                        }`}
+                              ? 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
+                              : 'bg-[#F7F8FA] text-[#697386] border border-[#E7EAF0]'
+                          }`}
                       >
                         {viewingLead.priority}
                       </span>
